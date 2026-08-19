@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stringer &middot; Portal Animation Preview</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --bg: #05070d;
+    --panel: #0c1120;
+    --panel-2: #111a2e;
+    --line: #1e2b45;
+    --text: #dbe6f7;
+    --muted: #7f92b3;
+    --accent: #35e0a1;
+    --accent-2: #4da3ff;
+    --speed: 1;
+  }
+  * { box-sizing: border-box; }
+  @property --sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, #142244 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: "Segoe UI", Inter, system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 26px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: .6px; }
+  .sub { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+  .controls { display: flex; gap: 9px; flex-wrap: wrap; margin-bottom: 22px; }
+  button {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    padding: 9px 14px; border-radius: 9px; font-size: 12.5px; cursor: pointer; font-weight: 600;
+  }
+  button:hover { border-color: var(--accent-2); }
+  button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .grid { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-start; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+  }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  .card-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--muted); }
+  .card-body { padding: 16px; display: grid; place-items: center; }
+  .caption { font-size: 11px; color: var(--muted); text-align: center; margin-top: 10px; letter-spacing: .5px; }
+
+  .stage { position: relative; width: 300px; height: 210px; isolation: isolate; overflow: hidden; }
+
+  /* ---------- 1 &middot; portal ---------- */
+  .portal {
+    --glow: var(--accent);
+    --rx: 104px;      /* ellipse radius x   */
+    --ry: 19px;       /* ellipse radius y   */
+    --base: 38px;     /* ring height offset */
+    --lift: 146px;    /* spark travel       */
+  }
+
+  .ring, .ring-halo, .ring-sweep, .floor {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: calc(var(--rx) * 2); height: calc(var(--ry) * 2);
+    border-radius: 50%;
+  }
+  .ring {
+    bottom: calc(var(--base) - var(--ry));
+    border: 2.5px solid var(--glow);
+    box-shadow: 0 0 18px var(--glow), 0 0 42px color-mix(in srgb, var(--glow) 55%, transparent),
+                inset 0 0 26px color-mix(in srgb, var(--glow) 35%, transparent);
+    animation: ring-pulse calc(3.2s * var(--speed)) ease-in-out infinite;
+  }
+  .ring-halo {
+    bottom: calc(var(--base) - var(--ry));
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 28%, transparent), transparent 72%);
+    filter: blur(10px);
+    animation: ring-pulse calc(3.2s * var(--speed)) ease-in-out infinite reverse;
+  }
+  .ring-sweep {
+    bottom: calc(var(--base) - var(--ry));
+    border: 3px solid color-mix(in srgb, var(--glow) 75%, white);
+    box-shadow: 0 0 14px var(--glow);
+    -webkit-mask: conic-gradient(from var(--sweep), transparent 0 58%, #000 76%, transparent 92%);
+    mask: conic-gradient(from var(--sweep), transparent 0 58%, #000 76%, transparent 92%);
+    animation: sweep calc(4.5s * var(--speed)) linear infinite;
+    opacity: .9;
+  }
+  .floor {
+    bottom: calc(var(--base) - var(--ry) * 1.6);
+    height: calc(var(--ry) * 3.2);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 45%, transparent), transparent 70%);
+    filter: blur(14px);
+    opacity: .7;
+  }
+  .beam {
+    position: absolute; left: 50%; bottom: var(--base);
+    width: calc(var(--rx) * 2.1); height: calc(var(--lift) * 1.05);
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse 52% 78% at 50% 100%, color-mix(in srgb, var(--glow) 26%, transparent), transparent 70%);
+    -webkit-mask-image:
+      linear-gradient(to top, #000 0%, rgba(0,0,0,.35) 55%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to top, #000 0%, rgba(0,0,0,.35) 55%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    mask-composite: intersect;
+    filter: blur(6px);
+    animation: beam-breathe calc(4.2s * var(--speed)) ease-in-out infinite;
+  }
+  .field { position: absolute; inset: 0; overflow: hidden; }
+
+  .spark, .streak {
+    position: absolute;
+    left: calc(50% + var(--rx) * var(--cos));
+    bottom: calc(var(--base) + var(--ry) * var(--sin));
+    animation: rise calc(var(--dur) * var(--speed)) linear infinite;
+    animation-delay: var(--delay);
+    will-change: transform, opacity;
+  }
+  .spark {
+    width: var(--size); height: var(--size);
+    background:
+      linear-gradient(var(--glow), var(--glow)) center / 100% 32% no-repeat,
+      linear-gradient(var(--glow), var(--glow)) center / 32% 100% no-repeat;
+    filter: drop-shadow(0 0 4px var(--glow));
+  }
+  .spark.dot {
+    background: var(--glow);
+    border-radius: 50%;
+    width: calc(var(--size) * .34); height: calc(var(--size) * .34);
+  }
+  .streak {
+    width: 1px; height: var(--size);
+    background: linear-gradient(to top, transparent, var(--glow), transparent);
+    opacity: .55;
+  }
+
+  @keyframes rise {
+    0%   { transform: translate(-50%, 0) scale(.45); opacity: 0; }
+    14%  { opacity: 1; }
+    72%  { opacity: .8; }
+    100% { transform: translate(calc(-50% + var(--drift)), calc(var(--lift) * var(--reach) * -1)) scale(1); opacity: 0; }
+  }
+  @keyframes ring-pulse {
+    0%, 100% { transform: translateX(-50%) scale(1);    opacity: .92; }
+    50%      { transform: translateX(-50%) scale(1.035); opacity: 1; }
+  }
+  @keyframes beam-breathe {
+    0%, 100% { opacity: .75; }
+    50%      { opacity: 1; }
+  }
+  @keyframes sweep {
+    to { --sweep: 360deg; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes core-pulse {
+    0%, 100% { transform: scale(1);    opacity: .9; }
+    50%      { transform: scale(1.18); opacity: 1; }
+  }
+
+  /* ---------- 2 &middot; sonar ---------- */
+  .sonar .mesh {
+    position: absolute; inset: 0;
+    background:
+      repeating-linear-gradient(to right, color-mix(in srgb, var(--accent) 16%, transparent) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(to bottom, color-mix(in srgb, var(--accent) 16%, transparent) 0 1px, transparent 1px 32px);
+    -webkit-mask: radial-gradient(ellipse 58% 52% at 50% 62%, #000, transparent 76%);
+    mask: radial-gradient(ellipse 58% 52% at 50% 62%, #000, transparent 76%);
+  }
+  .sonar .wave {
+    position: absolute; left: 50%; bottom: 38%;
+    width: 64px; height: 17px; margin: 0 0 -8px -32px;
+    border: 2px solid var(--accent); border-radius: 50%;
+    box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+    animation: sonar calc(3.6s * var(--speed)) ease-out infinite;
+    animation-delay: var(--delay);
+  }
+  .sonar .core {
+    position: absolute; left: 50%; bottom: 38%;
+    width: 15px; height: 15px; margin: 0 0 -7px -7px;
+    border-radius: 50%; background: var(--accent);
+    box-shadow: 0 0 16px var(--accent), 0 0 38px color-mix(in srgb, var(--accent) 55%, transparent);
+    animation: core-pulse calc(1.9s * var(--speed)) ease-in-out infinite;
+  }
+  @keyframes sonar {
+    0%   { transform: scale(.15); opacity: 0; }
+    12%  { opacity: 1; }
+    100% { transform: scale(4.4); opacity: 0; }
+  }
+
+  /* ---------- 3 &middot; orbit core ---------- */
+  .orbit .nucleus {
+    position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 36% 32%, #e2fff2, var(--accent) 46%, #0a6248 100%);
+    box-shadow: 0 0 24px var(--accent), 0 0 62px color-mix(in srgb, var(--accent) 40%, transparent);
+    animation: core-pulse calc(2.6s * var(--speed)) ease-in-out infinite;
+  }
+  .orbit .plane {
+    position: absolute; left: 50%; top: 50%; width: 186px; height: 186px; margin: -93px 0 0 -93px;
+    transform: rotate(var(--tilt)) scaleY(.34);
+  }
+  .orbit .track {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+  .orbit .arm {
+    position: absolute; inset: 0;
+    animation: spin calc(var(--dur) * var(--speed)) linear infinite;
+    animation-direction: var(--dir, normal);
+  }
+  .orbit .sat {
+    position: absolute; top: -5px; left: 50%; width: 10px; height: 10px; margin-left: -5px;
+    border-radius: 50%; background: var(--accent); transform: scaleY(2.9);
+    box-shadow: 0 0 12px var(--accent), 0 0 26px color-mix(in srgb, var(--accent) 50%, transparent);
+  }
+
+  /* ---------- 4 &middot; scan grid ---------- */
+  .scan .grid-floor {
+    position: absolute; left: -40%; right: -40%; bottom: -8px; height: 260px;
+    background:
+      repeating-linear-gradient(to right, color-mix(in srgb, var(--accent) 55%, transparent) 0 1px, transparent 1px 58px),
+      repeating-linear-gradient(to bottom, color-mix(in srgb, var(--accent) 55%, transparent) 0 1px, transparent 1px 34px);
+    transform: perspective(600px) rotateX(62deg);
+    transform-origin: bottom center;
+    -webkit-mask: linear-gradient(to top, #000 4%, transparent 86%);
+    mask: linear-gradient(to top, #000 4%, transparent 86%);
+    animation: grid-run calc(2.6s * var(--speed)) linear infinite;
+    opacity: .8;
+  }
+  .scan .horizon {
+    position: absolute; left: 4%; right: 4%; top: 56%; height: 1px;
+    background: linear-gradient(to right, transparent, var(--accent), transparent);
+    box-shadow: 0 0 22px var(--accent);
+  }
+  .scan .beam-line {
+    position: absolute; left: 10%; right: 10%; top: 0; height: 2px;
+    background: linear-gradient(to right, transparent, var(--accent), transparent);
+    box-shadow: 0 0 18px var(--accent);
+    animation: scan-y calc(3.1s * var(--speed)) ease-in-out infinite;
+  }
+  @keyframes grid-run { to { background-position: 0 0, 0 34px; } }
+  @keyframes scan-y {
+    0%, 100% { transform: translateY(126px); opacity: .35; }
+    50%      { transform: translateY(194px); opacity: 1; }
+  }
+
+  /* ---------- 5 &middot; uplink ---------- */
+  .uplink .pad {
+    position: absolute; left: 50%; bottom: 26px; width: 152px; height: 27px; margin-left: -76px;
+    border: 2px solid var(--accent); border-radius: 50%;
+    box-shadow: 0 0 18px var(--accent), inset 0 0 22px color-mix(in srgb, var(--accent) 30%, transparent);
+    animation: core-pulse calc(3s * var(--speed)) ease-in-out infinite;
+  }
+  .uplink .column {
+    position: absolute; left: 50%; bottom: 34px; width: 104px; height: 138px; margin-left: -52px;
+    background: linear-gradient(to top, color-mix(in srgb, var(--accent) 26%, transparent), transparent 90%);
+    -webkit-mask-image:
+      linear-gradient(to top, #000 4%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 26%, #000 74%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to top, #000 4%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 26%, #000 74%, transparent 100%);
+    mask-composite: intersect;
+    filter: blur(4px);
+  }
+  .uplink .packet {
+    position: absolute; left: 50%; bottom: 36px; width: 58px; height: 4px; margin-left: -29px;
+    border-radius: 3px; background: var(--accent);
+    box-shadow: 0 0 14px var(--accent);
+    animation: uplink calc(2.5s * var(--speed)) ease-in infinite;
+    animation-delay: var(--delay);
+  }
+  @keyframes uplink {
+    0%   { transform: translateY(0) scaleX(1); opacity: 0; }
+    14%  { opacity: 1; }
+    100% { transform: translateY(-120px) scaleX(.2); opacity: 0; }
+  }
+
+  /* ---------- 6 &middot; repair dial ---------- */
+  .loader .rim, .loader .dial, .loader .ticks, .loader .hub {
+    position: absolute; left: 50%; top: 50%; border-radius: 50%;
+  }
+  .loader .rim {
+    width: 128px; height: 128px; margin: -64px 0 0 -64px;
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .loader .dial {
+    width: 128px; height: 128px; margin: -64px 0 0 -64px;
+    background: conic-gradient(from var(--sweep), transparent 0 58%, color-mix(in srgb, var(--accent) 85%, white) 94%, transparent 100%);
+    -webkit-mask: radial-gradient(closest-side, transparent 88%, #000 91%);
+    mask: radial-gradient(closest-side, transparent 88%, #000 91%);
+    filter: drop-shadow(0 0 8px var(--accent));
+    animation: sweep calc(2s * var(--speed)) linear infinite;
+  }
+  .loader .ticks {
+    width: 158px; height: 158px; margin: -79px 0 0 -79px;
+    background: repeating-conic-gradient(from 0deg, var(--accent) 0 1.2deg, transparent 1.2deg 9deg);
+    -webkit-mask: radial-gradient(closest-side, transparent 86%, #000 88%);
+    mask: radial-gradient(closest-side, transparent 86%, #000 88%);
+    opacity: .3;
+    animation: spin calc(11s * var(--speed)) linear infinite reverse;
+  }
+  .loader .hub {
+    width: 38px; height: 38px; margin: -19px 0 0 -19px;
+    background: radial-gradient(circle at 40% 34%, #dbfff0, var(--accent) 52%, #0a6248 100%);
+    box-shadow: 0 0 20px var(--accent), 0 0 52px color-mix(in srgb, var(--accent) 38%, transparent);
+    animation: core-pulse calc(2.2s * var(--speed)) ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .field, .wave, .packet { display: none; }
+    .ring, .ring-halo, .ring-sweep, .beam, .core, .nucleus, .arm,
+    .grid-floor, .beam-line, .dial, .ticks, .hub, .pad { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Self-healing animation options</h1>
+<div class="sub">Standalone mock-up &mdash; nothing here is wired into the dashboard. Every option is pure CSS in the accent green, so it scales to any size.</div>
+
+<div class="controls">
+  <button type="button" id="stateBtn" aria-pressed="false">State: idle</button>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-head"><h2>Option 1 &middot; Portal</h2></div>
+    <div class="card-body">
+      <div class="stage portal" data-sparks="70"><div class="field"></div><div class="floor"></div><div class="beam"></div><div class="ring-halo"></div><div class="ring"></div><div class="ring-sweep"></div></div>
+      <div class="caption">particle column rising from a swept ring</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Option 2 &middot; Sonar</h2></div>
+    <div class="card-body">
+      <div class="stage sonar">
+        <span class="mesh"></span>
+        <span class="wave" style="--delay:0s"></span>
+        <span class="wave" style="--delay:-.9s"></span>
+        <span class="wave" style="--delay:-1.8s"></span>
+        <span class="wave" style="--delay:-2.7s"></span>
+        <span class="core"></span>
+      </div>
+      <div class="caption">probe pulses expanding over a mesh</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Option 3 &middot; Orbit core</h2></div>
+    <div class="card-body">
+      <div class="stage orbit">
+        <span class="plane" style="--tilt:0deg;--dur:5.5s"><span class="track"></span><span class="arm"><i class="sat"></i></span></span>
+        <span class="plane" style="--tilt:62deg;--dur:7.5s;--dir:reverse"><span class="track"></span><span class="arm"><i class="sat"></i></span></span>
+        <span class="plane" style="--tilt:118deg;--dur:6.4s"><span class="track"></span><span class="arm"><i class="sat"></i></span></span>
+        <span class="nucleus"></span>
+      </div>
+      <div class="caption">collectors orbiting a healing core</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Option 4 &middot; Scan grid</h2></div>
+    <div class="card-body">
+      <div class="stage scan">
+        <span class="grid-floor"></span>
+        <span class="horizon"></span>
+        <span class="beam-line"></span>
+      </div>
+      <div class="caption">scanline sweeping a running grid</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Option 5 &middot; Uplink</h2></div>
+    <div class="card-body">
+      <div class="stage uplink">
+        <span class="column"></span>
+        <span class="packet" style="--delay:0s"></span>
+        <span class="packet" style="--delay:-.5s"></span>
+        <span class="packet" style="--delay:-1s"></span>
+        <span class="packet" style="--delay:-1.5s"></span>
+        <span class="packet" style="--delay:-2s"></span>
+        <span class="pad"></span>
+      </div>
+      <div class="caption">patch packets streaming off the pad</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Option 6 &middot; Repair dial</h2></div>
+    <div class="card-body">
+      <div class="stage loader">
+        <span class="ticks"></span>
+        <span class="rim"></span>
+        <span class="dial"></span>
+        <span class="hub"></span>
+      </div>
+      <div class="caption">compact dial for inline / status use</div>
+    </div>
+  </div>
+</div>
+
+<script>
+function seedPortal(portal) {
+  const field = portal.querySelector('.field');
+  const total = Number(portal.dataset.sparks || 60);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < total; i++) {
+    const node = document.createElement('i');
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random());
+    const streak = i % 6 === 0;
+
+    node.className = streak ? 'streak' : (Math.random() < 0.62 ? 'spark' : 'spark dot');
+    node.style.setProperty('--cos', (Math.cos(angle) * radius).toFixed(3));
+    node.style.setProperty('--sin', (Math.sin(angle) * radius).toFixed(3));
+    node.style.setProperty('--size', streak ? (26 + Math.random() * 55).toFixed(0) + 'px'
+                                            : (5 + Math.random() * 9).toFixed(1) + 'px');
+    node.style.setProperty('--dur', (2.6 + Math.random() * 3.6).toFixed(2) + 's');
+    node.style.setProperty('--delay', (-Math.random() * 6).toFixed(2) + 's');
+    node.style.setProperty('--drift', (Math.random() * 18 - 9).toFixed(1) + 'px');
+    node.style.setProperty('--reach', (0.68 + Math.random() * 0.32).toFixed(2));
+    fragment.appendChild(node);
+  }
+  field.appendChild(fragment);
+}
+
+document.querySelectorAll('.portal').forEach(seedPortal);
+
+const stateBtn = document.getElementById('stateBtn');
+stateBtn.onclick = () => {
+  const healing = stateBtn.getAttribute('aria-pressed') !== 'true';
+  stateBtn.setAttribute('aria-pressed', String(healing));
+  stateBtn.textContent = 'State: ' + (healing ? 'healing' : 'idle');
+  document.documentElement.style.setProperty('--speed', healing ? '.5' : '1');
+};
+</script>
+</body>
+</html>

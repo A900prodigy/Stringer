@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stringer</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<script>
+  // Runs before first paint so the saved theme never flashes the wrong palette.
+  (function () {
+    var theme = 'dark';
+    try {
+      var saved = localStorage.getItem('stringer-theme');
+      if (saved === 'light') theme = 'light';
+    } catch (e) { /* storage blocked */ }
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+<style>
+  :root, :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #05070d;
+    --bg-glow: #142244;
+    --panel: #0c1120;
+    --panel-2: #111a2e;
+    --elev: #080d18;
+    --input-bg: #070b16;
+    --header-bg: rgba(8, 12, 22, 0.85);
+    --line: #1e2b45;
+    --text: #dbe6f7;
+    --text-soft: #c3d3ec;
+    --muted: #7f92b3;
+    --accent: #35e0a1;
+    --accent-2: #4da3ff;
+    --danger: #ff5c72;
+    --warn: #ffb547;
+    --term-bg: #04070f;
+    --term-ts: #40506e;
+    --term-info: #96acd0;
+    --term-cli: #b98bff;
+    --code-text: #9fe7c6;
+    --diff-minus-text: #ff93a4;
+    --diff-plus-text: #7bf0c4;
+    --summary-border: #2a5a8f;
+    --summary-strip: rgba(8, 14, 26, 0.55);
+    --summary-foot: rgba(8, 14, 26, 0.35);
+    --scroll-thumb: #1c2942;
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f6fb;
+    --bg-glow: #dbe8fb;
+    --panel: #ffffff;
+    --panel-2: #eef2f9;
+    --elev: #f8fafd;
+    --input-bg: #ffffff;
+    --header-bg: rgba(255, 255, 255, 0.85);
+    --line: #d2dbea;
+    --text: #16233a;
+    --text-soft: #2c3a52;
+    --muted: #596882;
+    --accent: #0d8f63;
+    --accent-2: #1b6ad0;
+    --danger: #cd3346;
+    --warn: #98650a;
+    --term-bg: #f1f4fa;
+    --term-ts: #8794ab;
+    --term-info: #3c5375;
+    --term-cli: #6a35c4;
+    --code-text: #0a6a48;
+    --diff-minus-text: #a3283a;
+    --diff-plus-text: #0a6a48;
+    --summary-border: #b6cfee;
+    --summary-strip: rgba(255, 255, 255, 0.6);
+    --summary-foot: rgba(255, 255, 255, 0.42);
+    --scroll-thumb: #c1ccdf;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, var(--bg-glow) 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: "Segoe UI", Inter, system-ui, sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 26px;
+    border-bottom: 1px solid var(--line);
+    background: var(--header-bg);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 38px; height: 38px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: grid; place-items: center; color: #05070d;
+  }
+  .logo svg { width: 21px; height: 21px; }
+  h1 { font-size: 18px; margin: 0; letter-spacing: 0.6px; font-weight: 700; }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 11px; padding: 6px 11px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+    display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.bad { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  .dot.warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  main {
+    display: grid;
+    grid-template-columns: minmax(340px, 1.05fr) minmax(420px, 1.4fr);
+    gap: 18px;
+    padding: 18px 26px 40px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  main > section { align-self: stretch; display: flex; flex-direction: column; }
+  #patchCard { flex: 1; display: flex; flex-direction: column; }
+  #patchCard .card-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #patchCode { flex: 1; min-height: 0; max-height: none; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  section .card + .card { margin-top: 18px; }
+  .card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  }
+  .card-head h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1.1px; color: var(--muted); }
+  .card-body { padding: 16px; }
+  .row { display: flex; gap: 9px; flex-wrap: wrap; }
+  .search { position: relative; flex: 1; min-width: 200px; display: flex; }
+  .search input[type=text] { padding-right: 36px; }
+  .search .clear {
+    position: absolute; right: 6px; top: 6px;
+    width: 26px; height: 26px; padding: 0; border: none; background: transparent;
+    color: var(--muted); font-size: 17px; line-height: 26px; border-radius: 6px;
+    transition: none;
+  }
+  .search .clear:hover:not(:disabled) {
+    color: var(--text); background: var(--panel-2); transform: none; border-color: transparent;
+  }
+  input[type=text] {
+    flex: 1; min-width: 180px; background: var(--input-bg); border: 1px solid var(--line);
+    color: var(--text); padding: 10px 12px; border-radius: 9px; font-size: 13px; outline: none;
+  }
+  input[type=text]:focus { border-color: var(--accent-2); }
+  button {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    padding: 10px 14px; border-radius: 9px; font-size: 12.5px; cursor: pointer;
+    font-weight: 600; transition: transform .08s ease, border-color .15s ease, background .15s ease;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent-2); transform: translateY(-1px); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary, button.danger, button.warn, button.blue { color: #eef6ff; }
+  button.primary { background: linear-gradient(135deg, #1d7f5c, #10603f); border-color: #26946b; }
+  button.danger { background: linear-gradient(135deg, #7c2237, #58101f); border-color: #a63147; }
+  button.warn { background: linear-gradient(135deg, #7a5410, #4d340a); border-color: #a3720f; }
+  button.blue { background: linear-gradient(135deg, #1d5aa0, #123a6b); border-color: #2a72c4; }
+  .theme-toggle { padding: 8px 13px; }
+  .stories { display: grid; gap: 10px; max-height: 620px; overflow-y: auto; padding-right: 4px; }
+  .story {
+    border: 1px solid var(--line); border-radius: 11px; padding: 12px; background: var(--elev);
+    display: grid; gap: 8px;
+  }
+  .story.active { border-color: var(--accent-2); box-shadow: 0 0 0 1px rgba(77,163,255,.25); }
+  .story h3 { margin: 0; font-size: 13.5px; line-height: 1.4; font-weight: 600; }
+  .story p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 10.5px; color: var(--muted); }
+  .tag { border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; background: var(--panel-2); }
+  .terminal {
+    background: var(--term-bg); font-family: "Cascadia Code", Consolas, monospace; font-size: 12px;
+    padding: 12px; height: 300px; overflow-y: auto; line-height: 1.65;
+  }
+  .line { white-space: pre-wrap; word-break: break-word; }
+  .line .ts { color: var(--term-ts); }
+  .line.info { color: var(--term-info); }
+  .line.success { color: var(--accent); }
+  .line.warn { color: var(--warn); }
+  .line.error { color: var(--danger); }
+  .line.cli { color: var(--term-cli); }
+  .line.heal { color: var(--accent-2); }
+  .status-banner {
+    display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: 10px;
+    font-size: 12.5px; border: 1px solid var(--line); background: var(--panel-2); margin-bottom: 12px;
+  }
+  .status-banner.healthy { border-color: #1d6e51; background: rgba(53,224,161,.08); color: var(--accent); }
+  .status-banner.broken { border-color: #7c2237; background: rgba(255,92,114,.08); color: var(--danger); }
+  .status-banner.inert { border-color: #7a5410; background: rgba(255,181,71,.08); color: var(--warn); }
+  .summary {
+    border: 1px solid var(--summary-border); border-radius: 12px; margin-bottom: 12px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(77,163,255,.10), rgba(77,163,255,.04));
+  }
+  .summary .tagline {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 9px 14px; border-bottom: 1px solid rgba(77,163,255,.18);
+    background: var(--summary-strip);
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted);
+  }
+  .summary .tagline b { color: var(--accent-2); font-weight: 700; letter-spacing: .8px; }
+  .summary .chip {
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+    background: var(--panel-2); color: var(--muted); letter-spacing: .4px;
+  }
+  .summary .tagline .spacer { margin-left: auto; }
+  .summary .inner { padding: 14px 16px 12px; }
+  .summary h4 {
+    margin: 0 0 10px; font-size: 15.5px; line-height: 1.45; color: var(--text); font-weight: 650;
+  }
+  .summary p {
+    margin: 0; font-size: 13px; line-height: 1.8; color: var(--text-soft);
+    border-left: 2px solid rgba(77,163,255,.35); padding-left: 12px;
+  }
+  .summary .foot {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 11px 16px; border-top: 1px solid rgba(77,163,255,.14); background: var(--summary-foot);
+  }
+  .summary .foot select {
+    background: var(--input-bg); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 10px; border-radius: 8px; font-size: 12px; outline: none;
+  }
+  .summary .foot select:focus { border-color: var(--accent-2); }
+  .summary .spacer { margin-left: auto; }
+  .summary a { color: var(--muted); font-size: 11.5px; text-decoration: none; }
+  .summary a:hover { color: var(--accent); text-decoration: underline; }
+  .icon-btn { display: inline-flex; align-items: center; gap: 7px; }
+  .icon-btn svg { width: 14px; height: 14px; flex: none; }
+  .icon-btn:disabled svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 12px; margin-bottom: 12px; }
+  .kv span:first-child { color: var(--muted); }
+  .kv code { color: var(--accent-2); font-size: 11.5px; word-break: break-all; }
+  .article-text {
+    background: var(--input-bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    max-height: 260px; overflow-y: auto; font-size: 12.5px; line-height: 1.7; white-space: pre-wrap;
+    color: var(--text-soft);
+  }
+  .nullbox { color: var(--danger); font-family: Consolas, monospace; font-size: 13px; }
+  pre.code {
+    background: var(--term-bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: 11.5px; line-height: 1.6;
+    overflow-x: auto; max-height: 250px; color: var(--code-text); margin: 0;
+  }
+  .diff { display: grid; gap: 6px; font-family: Consolas, monospace; font-size: 11.5px; margin-bottom: 12px; }
+  .diff div { padding: 5px 9px; border-radius: 6px; word-break: break-all; }
+  .diff .minus { background: rgba(255,92,114,.09); color: var(--diff-minus-text); border-left: 3px solid var(--danger); }
+  .diff .plus { background: rgba(53,224,161,.09); color: var(--diff-plus-text); border-left: 3px solid var(--accent); }
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .metric { background: var(--elev); border: 1px solid var(--line); border-radius: 10px; padding: 11px; }
+  .metric b { display: block; font-size: 19px; color: var(--accent); }
+  .metric span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
+  .empty { color: var(--muted); font-size: 12.5px; padding: 18px 0; text-align: center; }
+  .hidden { display: none; }
+
+  /* ---------- self-healing portal ---------- */
+  @property --sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+  .heal-portal {
+    --glow: var(--accent);
+    --rx: 108px; --ry: 20px; --base: 46px; --lift: 148px;
+    position: relative; flex: 1; min-height: 214px; margin-bottom: 12px; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: radial-gradient(120% 95% at 50% 112%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 68%), var(--elev);
+  }
+  #patchCard.healing .diff, #patchCard.healing #patchCode { display: none; }
+  .heal-portal .note {
+    position: absolute; top: 15px; left: 0; right: 0; text-align: center;
+    font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
+  }
+  .heal-portal .ring, .heal-portal .ring-halo, .heal-portal .ring-sweep, .heal-portal .floor {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    width: calc(var(--rx) * 2); height: calc(var(--ry) * 2);
+    border-radius: 50%;
+  }
+  .heal-portal .ring {
+    bottom: calc(var(--base) - var(--ry));
+    border: 2.5px solid var(--glow);
+    box-shadow: 0 0 18px var(--glow), 0 0 42px color-mix(in srgb, var(--glow) 55%, transparent),
+                inset 0 0 26px color-mix(in srgb, var(--glow) 35%, transparent);
+    animation: ring-pulse 3.2s ease-in-out infinite;
+  }
+  .heal-portal .ring-halo {
+    bottom: calc(var(--base) - var(--ry));
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 28%, transparent), transparent 72%);
+    filter: blur(10px);
+    animation: ring-pulse 3.2s ease-in-out infinite reverse;
+  }
+  .heal-portal .ring-sweep {
+    bottom: calc(var(--base) - var(--ry));
+    border: 3px solid color-mix(in srgb, var(--glow) 75%, white);
+    box-shadow: 0 0 14px var(--glow);
+    -webkit-mask: conic-gradient(from var(--sweep), transparent 0 58%, #000 76%, transparent 92%);
+    mask: conic-gradient(from var(--sweep), transparent 0 58%, #000 76%, transparent 92%);
+    animation: sweep 4.5s linear infinite;
+    opacity: .9;
+  }
+  .heal-portal .floor {
+    bottom: calc(var(--base) - var(--ry) * 1.6);
+    height: calc(var(--ry) * 3.2);
+    background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 45%, transparent), transparent 70%);
+    filter: blur(14px);
+    opacity: .7;
+  }
+  .heal-portal .beam {
+    position: absolute; left: 50%; bottom: var(--base);
+    width: calc(var(--rx) * 2.1); height: calc(var(--lift) * 1.05);
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse 52% 78% at 50% 100%, color-mix(in srgb, var(--glow) 26%, transparent), transparent 70%);
+    -webkit-mask-image:
+      linear-gradient(to top, #000 0%, rgba(0,0,0,.35) 55%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to top, #000 0%, rgba(0,0,0,.35) 55%, transparent 100%),
+      linear-gradient(to right, transparent 0%, #000 22%, #000 78%, transparent 100%);
+    mask-composite: intersect;
+    filter: blur(6px);
+    animation: beam-breathe 4.2s ease-in-out infinite;
+  }
+  .heal-portal .field { position: absolute; inset: 0; overflow: hidden; }
+  .heal-portal .spark, .heal-portal .streak {
+    position: absolute;
+    left: calc(50% + var(--rx) * var(--cos));
+    bottom: calc(var(--base) + var(--ry) * var(--sin));
+    animation: rise var(--dur) linear infinite;
+    animation-delay: var(--delay);
+    will-change: transform, opacity;
+  }
+  .heal-portal .spark {
+    width: var(--size); height: var(--size);
+    background:
+      linear-gradient(var(--glow), var(--glow)) center / 100% 32% no-repeat,
+      linear-gradient(var(--glow), var(--glow)) center / 32% 100% no-repeat;
+    filter: drop-shadow(0 0 4px var(--glow));
+  }
+  .heal-portal .spark.bead {
+    background: var(--glow); border-radius: 50%;
+    width: calc(var(--size) * .34); height: calc(var(--size) * .34);
+  }
+  .heal-portal .streak {
+    width: 1px; height: var(--size);
+    background: linear-gradient(to top, transparent, var(--glow), transparent);
+    opacity: .55;
+  }
+  @keyframes rise {
+    0%   { transform: translate(-50%, 0) scale(.45); opacity: 0; }
+    14%  { opacity: 1; }
+    72%  { opacity: .8; }
+    100% { transform: translate(calc(-50% + var(--drift)), calc(var(--lift) * var(--reach) * -1)) scale(1); opacity: 0; }
+  }
+  @keyframes ring-pulse {
+    0%, 100% { transform: translateX(-50%) scale(1);     opacity: .92; }
+    50%      { transform: translateX(-50%) scale(1.035); opacity: 1; }
+  }
+  @keyframes beam-breathe {
+    0%, 100% { opacity: .75; }
+    50%      { opacity: 1; }
+  }
+  @keyframes sweep { to { --sweep: 360deg; } }
+
+  /* ---------- collapsible terminal ---------- */
+  .terminal { transition: height .22s ease, padding .22s ease; }
+  #terminalCard.collapsed .terminal { height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
+  #terminalToggle svg { transition: transform .22s ease; }
+  #terminalCard.collapsed #terminalToggle svg { transform: rotate(-90deg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .heal-portal .field { display: none; }
+    .heal-portal .ring, .heal-portal .ring-halo, .heal-portal .ring-sweep, .heal-portal .beam { animation: none; }
+  }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <path d="M2.6 20C4.1 11.6 9.6 6.3 18 5.3"/>
+        <path d="M7 20.3C8.2 14 12.1 9.9 18 9"/>
+        <path d="M11.4 20.6C12.2 16.6 14.6 13.9 18 13.2"/>
+        <path d="M19.4 1.9l1.05 2.55 2.55 1.05-2.55 1.05-1.05 2.55-1.05-2.55L15.8 5.5l2.55-1.05z" fill="currentColor" stroke="none"/>
+      </svg>
+    </div>
+    <div>
+      <h1>𝔖𝔱𝔯𝔦𝔫𝔤𝔢𝔯</h1>
+    </div>
+  </div>
+  <button type="button" id="themeBtn" class="icon-btn theme-toggle"></button>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <div class="card-head">
+        <h2>1 &middot; Discovery</h2>
+        <div class="row">
+          <span class="pill">Newsdata.io</span>
+          <span class="pill" id="storyCount">0 stories</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="row" style="margin-bottom:12px">
+          <div class="search">
+            <input type="text" id="query" placeholder="Optional keyword e.g. technology, elections, markets" />
+            <button type="button" class="clear" id="clearQueryBtn" title="Clear search" aria-label="Clear search" hidden>&times;</button>
+          </div>
+          <button class="primary" id="loadBtn">Search Stories</button>
+        </div>
+        <div class="stories" id="stories">
+          <div class="empty">Loading the live global feed...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="card">
+      <div class="card-head">
+        <h2>2 &middot; Extraction</h2>
+        <div class="row">
+          <button class="warn" id="driftBtn">Simulate</button>
+          <button class="blue" id="summarizeBtn" disabled>Summarize</button>
+          <button class="blue" id="healBtn" disabled>Heal</button>
+          <button class="primary" id="approveBtn" disabled>Approve</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="status-banner" id="banner">Awaiting first extraction.</div>
+        <div class="summary hidden" id="summaryBox"></div>
+        <div class="kv" id="kv"></div>
+        <div id="articleBox" class="article-text">Select a story and run <b>Extract Full Text</b>.</div>
+      </div>
+    </div>
+
+    <div class="card" id="patchCard">
+      <div class="card-head">
+        <h2>3 &middot; Self-Healing</h2>
+        <div class="row">
+          <span class="pill">Bright Data Scraper Studio</span>
+          <span class="pill" id="patchMeta">idle</span>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="heal-portal hidden" id="healPortal" data-sparks="72">
+          <div class="field"></div>
+          <div class="floor"></div>
+          <div class="beam"></div>
+          <div class="ring-halo"></div>
+          <div class="ring"></div>
+          <div class="ring-sweep"></div>
+          <div class="note">Scraper Studio is rewriting the collector</div>
+        </div>
+        <div class="diff" id="diff"></div>
+        <pre class="code" id="patchCode">No heal staged.</pre>
+      </div>
+    </div>
+  </section>
+
+  <div class="card">
+    <div class="card-head"><h2>Pipeline Metrics</h2></div>
+    <div class="card-body">
+      <div class="metrics">
+        <div class="metric"><b id="mExtractions">0</b><span>Extractions</span></div>
+        <div class="metric"><b id="mDrift">0</b><span>Drift Events</span></div>
+        <div class="metric"><b id="mHeals">0</b><span>AI Heals</span></div>
+        <div class="metric"><b id="mTime">-</b><span>Heal Time</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="terminalCard">
+    <div class="card-head">
+      <h2>Live Orchestrator Terminal</h2>
+      <div class="row">
+        <button id="clearBtn">Clear</button>
+        <button id="terminalToggle" class="icon-btn" aria-expanded="true" aria-controls="terminal"></button>
+      </div>
+    </div>
+    <div class="terminal" id="terminal"></div>
+  </div>
+</main>
+
+<script>
+const el = (id) => document.getElementById(id);
+const terminal = el('terminal');
+let selected = null;
+
+const SPEAKER_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>' +
+  '<path d="M15.5 8.5a5 5 0 0 1 0 7"></path><path d="M18.5 5.5a9 9 0 0 1 0 13"></path></svg>';
+
+const SPINNER_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+  '<path d="M21 12a9 9 0 1 1-6.2-8.6"></path></svg>';
+
+const GLOBE_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path>' +
+  '<path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18z"></path></svg>';
+
+const SUN_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+  '<circle cx="12" cy="12" r="4.2"></circle>' +
+  '<path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"></path></svg>';
+
+const MOON_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z"></path></svg>';
+
+const CHEVRON_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M6 9l6 6 6-6"></path></svg>';
+
+let summaryMeta = { engine: '', compression: 0, durationMs: 0, sourceUrl: '#' };
+let LANGUAGES = [];
+const STORY_LIMIT = 10;
+
+function stamp() {
+  return new Date().toLocaleTimeString('en-GB', { hour12: false });
+}
+
+function print(level, message) {
+  const line = document.createElement('div');
+  line.className = 'line ' + level;
+  const prefix = { info: '>', success: '+', warn: '!', error: 'x', cli: '$', heal: '~' }[level] || '>';
+  line.innerHTML = '<span class="ts">[' + stamp() + ']</span> ' + prefix + ' ' + escapeHtml(message);
+  terminal.appendChild(line);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+async function api(path, options) {
+  const response = await fetch(path, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || ('Request failed with ' + response.status));
+  return payload;
+}
+
+function renderPills(status) {
+  el('mExtractions').textContent = status.metrics.extractions;
+  el('mDrift').textContent = status.metrics.driftIncidents;
+  el('mHeals').textContent = status.metrics.healsCompleted;
+  el('mTime').textContent = status.metrics.lastHealMs ? (status.metrics.lastHealMs / 1000).toFixed(1) + 's' : '-';
+  el('approveBtn').disabled = !status.pendingHeal;
+  if (status.pendingHeal) {
+    renderPatch(status.pendingHeal);
+  } else {
+    clearPatch();
+  }
+}
+
+async function refreshStatus() {
+  try {
+    renderPills(await api('/api/status'));
+  } catch (error) {
+    print('error', error.message);
+  }
+}
+
+function renderStories(articles) {
+  const container = el('stories');
+  el('storyCount').textContent = articles.length + ' stories';
+  if (!articles.length) {
+    container.innerHTML = '<div class="empty">Newsdata.io returned no stories for that query.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  articles.forEach((article) => {
+    const card = document.createElement('div');
+    card.className = 'story';
+    card.innerHTML =
+      '<h3>' + escapeHtml(article.title || 'Untitled') + '</h3>' +
+      '<p>' + escapeHtml((article.description || 'No summary provided by the discovery API.').slice(0, 190)) + '</p>' +
+      '<div class="meta">' +
+        '<span class="tag">' + escapeHtml(article.source || 'unknown') + '</span>' +
+        (article.category ? '<span class="tag">' + escapeHtml(article.category) + '</span>' : '') +
+        '<span class="tag">' + escapeHtml((article.publishedAt || '').slice(0, 16)) + '</span>' +
+      '</div>';
+    const actions = document.createElement('div');
+    actions.className = 'row';
+    const extract = document.createElement('button');
+    extract.className = 'blue';
+    extract.textContent = 'Extract Full Text';
+    extract.onclick = () => runExtraction(article, card, extract);
+    const open = document.createElement('button');
+    open.textContent = 'Open Source';
+    open.onclick = () => window.open(article.link, '_blank', 'noopener');
+    actions.append(extract, open);
+    card.appendChild(actions);
+    container.appendChild(card);
+  });
+}
+
+function renderExtraction(result) {
+  const banner = el('banner');
+  const healthy = result.status === 'HEALTHY';
+  banner.className = 'status-banner ' + (healthy ? 'healthy' : 'broken');
+  banner.textContent = healthy
+    ? 'HEALTHY  |  collector ' + result.collectorId + '  |  ' + result.durationMs + 'ms'
+    : 'COLLECTOR_DRIFT  |  ' + result.collectorId + ' returned null on this publisher  |  Scraper Studio repair available';
+
+  const article = result.article;
+  el('kv').innerHTML = [
+    ['Headline', article.headline === null ? '<span class="nullbox">null</span>' : escapeHtml(article.headline)],
+    ['Author', article.author === null ? '<span class="nullbox">null</span>' : escapeHtml(article.author)],
+    ['Published', article.published === null ? '<span class="nullbox">null</span>' : escapeHtml(article.published)],
+    ['Volume', article.stats.words + ' words / ' + article.stats.characters + ' characters'],
+    ['Collector', '<code>' + escapeHtml(result.collectorId) + '</code>']
+  ].map(([k, v]) => '<span>' + k + '</span><span>' + v + '</span>').join('');
+
+  el('articleBox').innerHTML = article.content
+    ? escapeHtml(article.content)
+    : '<span class="nullbox">{ "headline": null, "author": null, "article_body": null }</span>';
+  el('healBtn').disabled = !result.healable;
+  el('summarizeBtn').disabled = result.status !== 'HEALTHY';
+  el('summaryBox').classList.add('hidden');
+}
+
+function renderPatch(patch) {
+  const created = patch.status === 'COLLECTOR_CREATED';
+  el('patchMeta').textContent = patch.status + ' | ' + Math.round(patch.durationMs / 1000) + 's | ' + patch.steps.length + ' steps';
+  const check = patch.preview.headline
+    ? '<div class="plus">+ ' + (created
+        ? 'new collector parses this publisher'
+        : 'regression check passed: collector still parses its original training page') + '</div>'
+    : '<div class="minus">- ' + (created
+        ? 'new collector still returned no headline, review it in Bright Data'
+        : 'regression check: original training page returned no headline, review before approving') + '</div>';
+  el('diff').innerHTML =
+    '<div class="minus">- collector returned null on ' + escapeHtml(new URL(patch.url).hostname) + '</div>' +
+    '<div class="plus">+ ' + escapeHtml(patch.diffSummary) + '</div>' +
+    check;
+  el('patchCode').textContent =
+    (created ? 'spec sent to Scraper Studio:\n' : 'prompt sent to Scraper Studio:\n') + patch.prompt +
+    '\n\npipeline steps:\n  ' + patch.steps.join('\n  ') +
+    '\n\nnext step:\n' + patch.nextStep;
+  el('approveBtn').disabled = created;
+}
+
+function clearPatch() {
+  el('patchMeta').textContent = 'idle';
+  el('diff').innerHTML = '';
+  el('patchCode').textContent = 'No heal staged.';
+  el('approveBtn').disabled = true;
+}
+
+function seedHealPortal() {
+  const portal = el('healPortal');
+  const field = portal.querySelector('.field');
+  const total = Number(portal.dataset.sparks || 60);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < total; i++) {
+    const node = document.createElement('i');
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.sqrt(Math.random());
+    const streak = i % 6 === 0;
+
+    node.className = streak ? 'streak' : (Math.random() < 0.62 ? 'spark' : 'spark bead');
+    node.style.setProperty('--cos', (Math.cos(angle) * radius).toFixed(3));
+    node.style.setProperty('--sin', (Math.sin(angle) * radius).toFixed(3));
+    node.style.setProperty('--size', streak ? (26 + Math.random() * 55).toFixed(0) + 'px'
+                                            : (5 + Math.random() * 9).toFixed(1) + 'px');
+    node.style.setProperty('--dur', (2.6 + Math.random() * 3.6).toFixed(2) + 's');
+    node.style.setProperty('--delay', (-Math.random() * 6).toFixed(2) + 's');
+    node.style.setProperty('--drift', (Math.random() * 18 - 9).toFixed(1) + 'px');
+    node.style.setProperty('--reach', (0.68 + Math.random() * 0.32).toFixed(2));
+    fragment.appendChild(node);
+  }
+  field.appendChild(fragment);
+}
+
+function setHealing(active) {
+  el('patchCard').classList.toggle('healing', active);
+  el('healPortal').classList.toggle('hidden', !active);
+}
+
+async function runExtraction(article, card, button) {
+  document.querySelectorAll('.story').forEach((node) => node.classList.remove('active'));
+  if (card) card.classList.add('active');
+  selected = article;
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Extracting...';
+  }
+  try {
+    const result = await api('/api/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: article.link })
+    });
+    renderExtraction(result);
+  } catch (error) {
+    print('error', error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Extract Full Text';
+    }
+    refreshStatus();
+  }
+}
+
+async function loadStories() {
+  const button = el('loadBtn');
+  button.disabled = true;
+  button.textContent = 'Contacting Newsdata.io...';
+  try {
+    const query = el('query').value.trim();
+    const payload = await api('/api/news' + (query ? '?q=' + encodeURIComponent(query) : ''));
+    renderStories(payload.articles.slice(0, STORY_LIMIT));
+  } catch (error) {
+    print('error', error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Search Stories';
+  }
+}
+
+el('loadBtn').onclick = loadStories;
+
+function syncClearButton() {
+  el('clearQueryBtn').hidden = el('query').value.length === 0;
+}
+
+el('query').addEventListener('input', syncClearButton);
+el('query').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') el('loadBtn').click();
+  if (event.key === 'Escape') el('clearQueryBtn').click();
+});
+
+el('clearQueryBtn').onclick = () => {
+  el('query').value = '';
+  syncClearButton();
+  el('query').focus();
+};
+
+el('driftBtn').onclick = async () => {
+  const button = el('driftBtn');
+  button.disabled = true;
+  button.textContent = 'Finding...';
+  try {
+    const result = await api('/api/simulate', { method: 'POST' });
+    selected = result.story;
+    document.querySelectorAll('.story').forEach((node) => node.classList.remove('active'));
+    renderExtraction(result);
+    print('warn', 'collector met ' + new URL(result.url).hostname + ' for the first time and returned nothing');
+  } catch (error) {
+    print('error', error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Simulate';
+    refreshStatus();
+  }
+};
+
+el('healBtn').onclick = async () => {
+  const button = el('healBtn');
+  button.disabled = true;
+  button.textContent = 'Healing...';
+  setHealing(true);
+  el('patchMeta').textContent = 'healing...';
+  print('info', 'Scraper Studio heals take several minutes, progress streams below');
+  try {
+    const patch = await api('/api/heal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: selected ? selected.link : null })
+    });
+    renderPatch(patch);
+    if (patch.extraction) renderExtraction(patch.extraction);
+  } catch (error) {
+    print('error', error.message);
+    el('patchMeta').textContent = 'idle';
+  } finally {
+    setHealing(false);
+    button.textContent = 'Heal';
+    refreshStatus();
+  }
+};
+
+el('approveBtn').onclick = async () => {
+  const button = el('approveBtn');
+  button.disabled = true;
+  button.textContent = 'Approving...';
+  try {
+    await api('/api/approve', { method: 'POST' });
+    clearPatch();
+    if (selected) {
+      button.textContent = 'Verifying...';
+      const card = document.querySelector('.story.active');
+      await runExtraction(selected, card, card ? card.querySelector('button') : null);
+    }
+  } catch (error) {
+    print('error', error.message);
+  } finally {
+    button.textContent = 'Approve';
+    refreshStatus();
+  }
+};
+
+el('summarizeBtn').onclick = async () => {
+  const button = el('summarizeBtn');
+  button.disabled = true;
+  button.textContent = 'Summarizing...';
+  try {
+    const result = await api('/api/summarize', { method: 'POST' });
+    summaryMeta = {
+      engine: result.engine,
+      compression: result.compression,
+      durationMs: result.durationMs,
+      sourceUrl: result.source.url
+    };
+    renderSummary(result.headline, result.summary, 'English');
+  } catch (error) {
+    print('error', error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Summarize';
+  }
+};
+
+function renderSummary(headline, summary, language) {
+  const box = el('summaryBox');
+  box.classList.remove('hidden');
+  const options = LANGUAGES.map(
+    (item) => '<option value="' + item + '"' + (item === language ? ' selected' : '') + '>' + item + '</option>'
+  ).join('');
+  box.innerHTML =
+    '<div class="tagline">' +
+      '<b>AI Summary</b>' +
+      '<span class="chip">' + escapeHtml(summaryMeta.engine) + '</span>' +
+      '<span class="chip">' + summaryMeta.compression + '% shorter</span>' +
+      (language !== 'English' ? '<span class="chip">' + escapeHtml(language) + '</span>' : '') +
+      '<span class="chip spacer">' + (summaryMeta.durationMs / 1000).toFixed(1) + 's</span>' +
+    '</div>' +
+    '<div class="inner">' +
+      '<h4>' + escapeHtml(headline) + '</h4>' +
+      '<p>' + escapeHtml(summary) + '</p>' +
+    '</div>' +
+    '<div class="foot">' +
+      '<button class="blue icon-btn" id="listenBtn">' + SPEAKER_ICON + '<span>Listen</span></button>' +
+      '<select id="langSelect"><option value="English">English</option>' + options + '</select>' +
+      '<button id="translateBtn" class="icon-btn">' + GLOBE_ICON + '<span>Translate</span></button>' +
+      '<a class="spacer" href="' + encodeURI(summaryMeta.sourceUrl) + '" target="_blank" rel="noopener">Read the original at source</a>' +
+    '</div>';
+  el('listenBtn').onclick = speakSummary;
+  el('translateBtn').onclick = translateSummary;
+}
+
+async function translateSummary() {
+  const button = el('translateBtn');
+  const language = el('langSelect').value;
+  button.disabled = true;
+  button.innerHTML = SPINNER_ICON + '<span>Translating...</span>';
+  try {
+    const result = await api('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ language })
+    });
+    renderSummary(result.headline, result.summary, result.language);
+  } catch (error) {
+    print('error', error.message);
+    button.disabled = false;
+    button.innerHTML = GLOBE_ICON + '<span>Translate</span>';
+  }
+}
+
+async function speakSummary() {
+  const button = el('listenBtn');
+  button.disabled = true;
+  button.innerHTML = SPINNER_ICON + '<span>Voicing...</span>';
+  try {
+    const response = await fetch('/api/speak', { method: 'POST' });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || ('Request failed with ' + response.status));
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    await audio.play();
+    button.innerHTML = SPEAKER_ICON + '<span>Replay</span>';
+  } catch (error) {
+    print('error', error.message);
+    button.innerHTML = SPEAKER_ICON + '<span>Listen</span>';
+  } finally {
+    button.disabled = false;
+  }
+}
+
+el('clearBtn').onclick = () => { terminal.innerHTML = ''; };
+
+function setTerminalCollapsed(collapsed) {
+  const toggle = el('terminalToggle');
+  el('terminalCard').classList.toggle('collapsed', collapsed);
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.innerHTML = CHEVRON_ICON + '<span>' + (collapsed ? 'Show' : 'Hide') + '</span>';
+}
+
+el('terminalToggle').onclick = () => {
+  setTerminalCollapsed(!el('terminalCard').classList.contains('collapsed'));
+};
+
+setTerminalCollapsed(false);
+
+const THEME_KEY = 'stringer-theme';
+
+function applyTheme(theme) {
+  const next = theme === 'light' ? 'dark' : 'light';
+  const button = el('themeBtn');
+  document.documentElement.setAttribute('data-theme', theme);
+  // The button advertises the theme it switches to, not the active one.
+  button.innerHTML = (next === 'light' ? SUN_ICON : MOON_ICON) +
+    '<span>' + (next === 'light' ? 'Light' : 'Dark') + '</span>';
+  button.title = 'Switch to ' + next + ' mode';
+  button.setAttribute('aria-label', 'Switch to ' + next + ' mode');
+}
+
+el('themeBtn').onclick = () => {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem(THEME_KEY, next); } catch (error) { /* storage blocked */ }
+  applyTheme(next);
+};
+
+applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+
+const stream = new EventSource('/api/stream');
+stream.onmessage = (message) => {
+  const frame = JSON.parse(message.data);
+  if (frame.event === 'log') {
+    print(frame.payload.level, frame.payload.message);
+  } else if (frame.event === 'patch-ready') {
+    renderPatch(frame.payload);
+  } else if (frame.event === 'patch-applied') {
+    print('success', 'Bright Data saved the healed collector template');
+    refreshStatus();
+  }
+};
+stream.onerror = () => print('warn', 'log stream reconnecting');
+
+print('info', 'dashboard ready, orchestrator stream attached');
+api('/api/languages').then((data) => { LANGUAGES = data.languages; }).catch(() => {});
+seedHealPortal();
+refreshStatus();
+loadStories();
+</script>
+</body>
+</html>

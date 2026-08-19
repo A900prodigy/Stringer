@@ -1,0 +1,19 @@
+{
+  "name": "stringer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stringer - a news scraper that repairs itself, powered by Newsdata.io, Bright Data Scraper Studio and Gemini",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@brightdata/cli": "^0.3.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2"
+  }
+}
