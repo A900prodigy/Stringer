@@ -357,6 +357,87 @@ async function summarizeWithGemini(title, content) {
   return parsed;
 }
 
+const CHANNEL_PROMPT = [
+  'You are a TV news anchor recording short segments for a live broadcast.',
+  'Below is a numbered list of news stories, each with a title and a short description.',
+  'For every story, write a punchy on-air segment: a "headline" of at most 10 words, read as a chyron,',
+  'and a "summary" of exactly two sentences in a confident TV-anchor voice, using only facts given below.',
+  'Do not invent facts, numbers, or quotes that are not in the title or description.',
+  'Return a JSON array with one object per story, in the same order, each with "headline" and "summary".'
+].join(' ');
+
+const CHANNEL_SCHEMA = {
+  type: 'object',
+  properties: {
+    segments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          headline: { type: 'string' },
+          summary: { type: 'string' }
+        },
+        required: ['headline', 'summary']
+      }
+    }
+  },
+  required: ['segments']
+};
+
+async function channelBriefWithGemini(stories) {
+  const listing = stories
+    .map((story, index) => `${index + 1}. Title: ${story.title || 'Untitled'}\nDescription: ${story.description || 'No description available.'}`)
+    .join('\n\n');
+
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`;
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: `${CHANNEL_PROMPT}\n\n${listing}` }] }],
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 3072,
+        thinkingConfig: { thinkingLevel: 'minimal' },
+        responseMimeType: 'application/json',
+        responseSchema: CHANNEL_SCHEMA
+      }
+    }),
+    signal: AbortSignal.timeout(45000)
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = payload && payload.error ? payload.error.message : `HTTP ${response.status}`;
+    throw new HttpError(response.status === 429 ? 429 : 502, `Gemini rejected the request: ${detail}`);
+  }
+
+  const candidate = payload && payload.candidates && payload.candidates[0];
+  if (candidate && candidate.finishReason === 'MAX_TOKENS') {
+    throw new HttpError(502, 'Gemini hit the output token budget before finishing');
+  }
+  const text = candidate && candidate.content && candidate.content.parts
+    ? candidate.content.parts
+        .filter((part) => !part.thought)
+        .map((part) => part.text || '')
+        .join('')
+        .replace(/^```(?:json)?\s*|\s*```$/g, '')
+        .trim()
+    : '';
+  if (!text) throw new HttpError(502, 'Gemini returned no usable candidate');
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new HttpError(502, 'Gemini returned malformed JSON');
+  }
+  if (!Array.isArray(parsed.segments)) {
+    throw new HttpError(502, 'Gemini did not return a segments array');
+  }
+  return parsed.segments;
+}
+
 const LANGUAGES = [
   'Spanish', 'French', 'German', 'Portuguese', 'Italian', 'Dutch',
   'Hindi', 'Tamil', 'Bengali', 'Arabic', 'Japanese', 'Korean',
@@ -816,6 +897,46 @@ app.post('/api/summarize', async (request, response, next) => {
   }
 });
 
+app.post('/api/channel', async (request, response, next) => {
+  try {
+    if (!config.geminiApiKey) {
+      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
+    }
+    const stories = Array.isArray(request.body && request.body.stories) ? request.body.stories.slice(0, 10) : [];
+    if (!stories.length) {
+      throw new HttpError(409, 'No stories were sent. Load stories first, then open the channel.');
+    }
+    const cleaned = stories
+      .map((story) => ({
+        title: typeof story.title === 'string' ? story.title.slice(0, 300) : '',
+        description: typeof story.description === 'string' ? story.description.slice(0, 600) : '',
+        source: typeof story.source === 'string' ? story.source.slice(0, 80) : '',
+        link: typeof story.link === 'string' ? story.link.slice(0, 500) : ''
+      }))
+      .filter((story) => story.title);
+    if (!cleaned.length) {
+      throw new HttpError(422, 'None of the sent stories had a usable title');
+    }
+
+    const started = Date.now();
+    log('info', `briefing ${cleaned.length} stories for the news channel with ${config.geminiModel}`);
+    const segments = await channelBriefWithGemini(cleaned);
+    const durationMs = Date.now() - started;
+    log('success', `channel ready with ${segments.length} segments in ${durationMs}ms`);
+
+    const combined = cleaned.map((story, index) => ({
+      headline: (segments[index] && segments[index].headline) || story.title,
+      summary: (segments[index] && segments[index].summary) || story.description,
+      source: story.source,
+      link: story.link
+    }));
+
+    response.json({ segments: combined, engine: config.geminiModel, durationMs });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/translate', async (request, response, next) => {
   try {
     if (!state.lastSummary) {
@@ -862,6 +983,26 @@ app.post('/api/speak', async (request, response, next) => {
     log('info', `voicing the summary with ${config.geminiVoice} on ${config.geminiTtsModel}`);
     const spoken = await speakWithGemini(`${summary.headline}. ${summary.summary}`);
     log('success', `${spoken.seconds.toFixed(1)}s of audio rendered in ${Date.now() - started}ms`);
+    response.setHeader('Content-Type', 'audio/wav');
+    response.setHeader('Cache-Control', 'no-store');
+    response.send(spoken.audio);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/channel-speak', async (request, response, next) => {
+  try {
+    const text = typeof (request.body && request.body.text) === 'string' ? request.body.text.trim() : '';
+    if (!text) {
+      throw new HttpError(400, 'No text was sent to voice');
+    }
+    if (!config.geminiApiKey) {
+      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
+    }
+    const started = Date.now();
+    const spoken = await speakWithGemini(text.slice(0, 2000));
+    log('info', `voiced a channel segment in ${Date.now() - started}ms`);
     response.setHeader('Content-Type', 'audio/wav');
     response.setHeader('Cache-Control', 'no-store');
     response.send(spoken.audio);
