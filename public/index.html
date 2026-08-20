@@ -382,6 +382,140 @@
   }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 8px; }
+
+  /* ---------- CRT news channel ---------- */
+  #channelOverlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(2, 3, 7, 0.82);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  #channelOverlay.hidden { display: none; }
+  .crt-set {
+    width: min(760px, 100%);
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+  }
+  .crt-topline {
+    display: flex; align-items: center; gap: 10px; color: var(--muted);
+    font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase;
+  }
+  .crt-topline .rec { display: flex; align-items: center; gap: 6px; color: var(--danger); }
+  .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); box-shadow: 0 0 8px var(--danger); animation: rec-blink 1.1s steps(1) infinite; }
+  @keyframes rec-blink { 50% { opacity: .15; } }
+  .crt-close {
+    margin-left: auto; border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    width: 30px; height: 30px; padding: 0; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; line-height: 0;
+  }
+  .crt-close svg { width: 13px; height: 13px; display: block; }
+  .crt-close:hover { border-color: var(--danger); color: var(--danger); }
+
+  .crt-bezel {
+    width: 100%;
+    aspect-ratio: 16 / 10.5;
+    border-radius: 34px;
+    padding: 26px 26px 40px;
+    background:
+      radial-gradient(140% 100% at 30% 0%, #3a4152 0%, #22262f 42%, #14161c 100%);
+    box-shadow: 0 26px 60px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06), inset 0 -2px 10px rgba(0,0,0,.6);
+    position: relative;
+  }
+  .crt-bezel::after {
+    content: 'STRINGER \2022 CH-10'; position: absolute; left: 30px; bottom: 12px;
+    font-size: 10px; letter-spacing: 2px; color: #6a7184; font-family: Consolas, monospace;
+  }
+  .crt-antennas { position: absolute; top: -46px; left: 50%; width: 34px; margin-left: -17px; height: 62px; z-index: 1; }
+  .crt-antennas .arm {
+    position: absolute; bottom: 0; width: 4px; height: 100%;
+    background: linear-gradient(to top, #4a5164, #babfcc);
+    border-radius: 3px; transform-origin: bottom center;
+    box-shadow: 0 0 6px rgba(0,0,0,.4);
+  }
+  .crt-antennas .arm::after {
+    content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%);
+    width: 11px; height: 11px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #dfe3ea, #8b93a5 60%, #565d70 100%);
+    box-shadow: 0 0 5px rgba(0,0,0,.5);
+  }
+  .crt-antennas .arm.left { left: 2px; transform: rotate(-30deg); }
+  .crt-antennas .arm.right { right: 2px; transform: rotate(30deg); }
+  .crt-antennas .base {
+    position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%);
+    width: 26px; height: 10px; border-radius: 4px;
+    background: linear-gradient(180deg, #4a5164, #262a34);
+  }
+  .crt-logo-bug {
+    position: absolute; z-index: 7; right: 16px; bottom: 14px;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; letter-spacing: .5px;
+    color: rgba(216,255,233,.55); text-shadow: 0 0 6px rgba(53,224,161,.4);
+    pointer-events: none; user-select: none;
+  }
+  .crt-logo-bug svg { width: 13px; height: 13px; opacity: .8; }
+  .crt-screen {
+    position: relative; width: 100%; height: 100%; overflow: hidden;
+    border-radius: 20px;
+    background: radial-gradient(120% 120% at 50% 15%, #061b12 0%, #020705 68%, #000 100%);
+    box-shadow: inset 0 0 0 2px #000, inset 0 0 40px rgba(0,0,0,.9), inset 0 0 90px rgba(0,0,0,.7);
+  }
+  .crt-curve {
+    position: absolute; inset: 0; pointer-events: none; z-index: 6;
+    background: radial-gradient(120% 90% at 50% 50%, transparent 58%, rgba(0,0,0,.55) 100%);
+  }
+  .crt-scanlines {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 1px, rgba(0,0,0,.35) 2px, rgba(0,0,0,0) 3px);
+    mix-blend-mode: multiply;
+    animation: scan-drift 9s linear infinite;
+  }
+  @keyframes scan-drift { to { background-position: 0 120px; } }
+  .crt-flicker { position: absolute; inset: 0; pointer-events: none; z-index: 4; background: var(--accent); opacity: 0; animation: crt-flicker 6.5s ease-in-out infinite; }
+  @keyframes crt-flicker {
+    0%, 92%, 100% { opacity: 0; }
+    93% { opacity: .05; } 94% { opacity: 0; } 95% { opacity: .03; } 96% { opacity: 0; }
+  }
+  .crt-static {
+    position: absolute; inset: 0; z-index: 8; opacity: 0; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    transition: opacity .15s ease;
+  }
+  .crt-static.on { opacity: .5; }
+
+  .crt-content { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column; padding: 22px 26px 0; color: #d8ffe9; font-family: "Segoe UI", Inter, system-ui, sans-serif; }
+  .crt-live { display: flex; flex-direction: column; height: 100%; }
+  .crt-status { display: flex; align-items: center; gap: 8px; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; color: #7fe0ac; opacity: .85; }
+  .crt-status .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5c72; box-shadow: 0 0 6px #ff5c72; animation: rec-blink 1.1s steps(1) infinite; }
+  .crt-source { margin-left: auto; color: #6fa78f; }
+  .crt-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 10px 6px 18px; }
+  .crt-headline { font-size: clamp(19px, 3.4vw, 28px); font-weight: 750; line-height: 1.28; text-shadow: 0 0 12px rgba(53,224,161,.45); }
+  .crt-summary { font-size: 14px; line-height: 1.75; color: #b9e8cf; max-width: 92%; min-height: 3.6em; }
+  .crt-summary .cursor { display: inline-block; width: 8px; height: 14px; background: #7fe0ac; margin-left: 2px; vertical-align: -2px; animation: crt-cursor 1s steps(1) infinite; }
+  @keyframes crt-cursor { 50% { opacity: 0; } }
+  .crt-loading, .crt-error { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 10px; text-align: center; color: #7fe0ac; font-size: 13px; letter-spacing: .6px; padding-bottom: 26px; }
+  .crt-loading { justify-content: center; }
+  .crt-error { color: #ff93a4; }
+  .crt-error button { margin-top: 6px; }
+  .crt-dial { width: 34px; height: 34px; border-radius: 50%; border: 2px solid #2c6e50; border-top-color: #7fe0ac; animation: spin 1s linear infinite; }
+
+  .crt-ticker-wrap { border-top: 1px solid rgba(127,224,172,.18); overflow: hidden; padding: 8px 0; background: rgba(2,10,6,.5); }
+  .crt-ticker { display: flex; gap: 44px; white-space: nowrap; width: max-content; animation: ticker-scroll 26s linear infinite; font-size: 11px; letter-spacing: .5px; color: #7fe0ac; }
+  .crt-ticker span { opacity: .85; }
+  @keyframes ticker-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+  .crt-controls { display: flex; align-items: center; gap: 10px; }
+  .crt-controls button {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    padding: 8px 13px; border-radius: 999px; font-size: 12px; cursor: pointer; font-weight: 600;
+  }
+  .crt-controls button:hover { border-color: var(--accent); }
+  .crt-dots { display: flex; gap: 6px; margin-left: auto; }
+  .crt-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+  .crt-dot.active { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .crt-scanlines, .crt-flicker, .crt-ticker { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -410,6 +544,7 @@
         <div class="row">
           <span class="pill">Newsdata.io</span>
           <span class="pill" id="storyCount">0 stories</span>
+          <button type="button" class="blue icon-btn" id="channelBtn">&#128250; News Channel</button>
         </div>
       </div>
       <div class="card-body">
@@ -494,6 +629,70 @@
   </div>
 </main>
 
+<div id="channelOverlay" class="hidden" role="dialog" aria-modal="true" aria-label="Stringer news channel">
+  <div class="crt-set">
+    <div class="crt-topline">
+      <span class="rec"><span class="rec-dot"></span> ON AIR</span>
+      <span>STRINGER NEWS &middot; AUTO-BRIEFED BY GEMINI</span>
+      <button type="button" class="crt-close" id="channelCloseBtn" aria-label="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+      </button>
+    </div>
+    <div class="crt-bezel">
+      <div class="crt-antennas">
+        <div class="base"></div>
+        <div class="arm left"></div>
+        <div class="arm right"></div>
+      </div>
+      <div class="crt-screen">
+        <div class="crt-content">
+          <div id="channelLoading" class="crt-loading">
+            <div class="crt-dial"></div>
+            <div>TUNING IN&hellip;</div>
+          </div>
+          <div id="channelError" class="crt-error hidden">
+            <div id="channelErrorText">Signal lost.</div>
+            <button type="button" id="channelRetryBtn">Retry</button>
+          </div>
+          <div id="channelLive" class="crt-live hidden">
+            <div class="crt-status">
+              <span class="live-dot"></span>
+              <span id="channelIndex">STORY 1 / 10</span>
+              <span class="crt-source" id="channelSource">&mdash;</span>
+            </div>
+            <div class="crt-body">
+              <div class="crt-headline" id="channelHeadline"></div>
+              <div class="crt-summary" id="channelSummary"></div>
+            </div>
+            <div class="crt-ticker-wrap">
+              <div class="crt-ticker" id="channelTicker"></div>
+            </div>
+          </div>
+        </div>
+        <div class="crt-scanlines"></div>
+        <div class="crt-flicker"></div>
+        <div class="crt-curve"></div>
+        <div class="crt-static" id="channelStatic"></div>
+        <div class="crt-logo-bug">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M2.6 20C4.1 11.6 9.6 6.3 18 5.3"/>
+            <path d="M7 20.3C8.2 14 12.1 9.9 18 9"/>
+            <path d="M11.4 20.6C12.2 16.6 14.6 13.9 18 13.2"/>
+          </svg>
+          <span>STRINGER</span>
+        </div>
+      </div>
+    </div>
+    <div class="crt-controls">
+      <button type="button" id="channelPrevBtn">&larr; Prev</button>
+      <button type="button" id="channelPlayBtn">Pause</button>
+      <button type="button" id="channelNextBtn">Next &rarr;</button>
+      <button type="button" id="channelMuteBtn">&#128266; Sound</button>
+      <div class="crt-dots" id="channelDots"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 const el = (id) => document.getElementById(id);
 const terminal = el('terminal');
@@ -529,6 +728,7 @@ const CHEVRON_ICON =
 let summaryMeta = { engine: '', compression: 0, durationMs: 0, sourceUrl: '#' };
 let LANGUAGES = [];
 const STORY_LIMIT = 10;
+let currentStories = [];
 
 function stamp() {
   return new Date().toLocaleTimeString('en-GB', { hour12: false });
@@ -726,7 +926,8 @@ async function loadStories() {
   try {
     const query = el('query').value.trim();
     const payload = await api('/api/news' + (query ? '?q=' + encodeURIComponent(query) : ''));
-    renderStories(payload.articles.slice(0, STORY_LIMIT));
+    currentStories = payload.articles.slice(0, STORY_LIMIT);
+    renderStories(currentStories);
   } catch (error) {
     print('error', error.message);
   } finally {
@@ -943,6 +1144,194 @@ el('themeBtn').onclick = () => {
 };
 
 applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+
+/* ---------- CRT news channel ---------- */
+const SEGMENT_MS = 8000;
+let channelSegments = [];
+let channelIndex = 0;
+let channelTimer = null;
+let channelPlaying = true;
+let channelTypeTimer = null;
+let channelMuted = false;
+let channelAudio = null;
+let channelAudioToken = 0;
+
+function showStatic(ms) {
+  const layer = el('channelStatic');
+  layer.classList.add('on');
+  clearTimeout(showStatic._t);
+  showStatic._t = setTimeout(() => layer.classList.remove('on'), ms || 260);
+}
+
+function setChannelView(view) {
+  el('channelLoading').classList.toggle('hidden', view !== 'loading');
+  el('channelError').classList.toggle('hidden', view !== 'error');
+  el('channelLive').classList.toggle('hidden', view !== 'live');
+}
+
+function typeSummary(text) {
+  const node = el('channelSummary');
+  clearInterval(channelTypeTimer);
+  node.textContent = '';
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor';
+  let i = 0;
+  channelTypeTimer = setInterval(() => {
+    i += 3;
+    node.textContent = text.slice(0, i);
+    node.appendChild(cursor);
+    if (i >= text.length) clearInterval(channelTypeTimer);
+  }, 18);
+}
+
+function stopChannelAudio() {
+  channelAudioToken += 1;
+  if (channelAudio) {
+    channelAudio.pause();
+    channelAudio.src = '';
+    channelAudio = null;
+  }
+}
+
+async function speakSegment(segment) {
+  if (channelMuted || !segment) return;
+  const token = ++channelAudioToken;
+  try {
+    const response = await fetch('/api/channel-speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: segment.headline + '. ' + segment.summary })
+    });
+    if (token !== channelAudioToken) return;
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({}));
+      throw new Error(detail.error || ('narration request failed with ' + response.status));
+    }
+    const url = URL.createObjectURL(await response.blob());
+    if (token !== channelAudioToken) { URL.revokeObjectURL(url); return; }
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    channelAudio = audio;
+    await audio.play();
+  } catch (error) {
+    if (token === channelAudioToken) {
+      print('error', 'channel narration failed: ' + error.message);
+      if (error.name === 'NotAllowedError') {
+        channelMuted = true;
+        el('channelMuteBtn').textContent = '\u{1F507} Tap for Sound';
+        print('warn', 'browser blocked autoplay audio, tap Sound to enable narration');
+      }
+    }
+  }
+}
+
+function renderChannelDots() {
+  el('channelDots').innerHTML = channelSegments
+    .map((_, i) => '<span class="crt-dot' + (i === channelIndex ? ' active' : '') + '"></span>')
+    .join('');
+}
+
+function renderChannelSegment() {
+  const segment = channelSegments[channelIndex];
+  if (!segment) return;
+  showStatic(220);
+  stopChannelAudio();
+  el('channelIndex').textContent = 'STORY ' + (channelIndex + 1) + ' / ' + channelSegments.length;
+  el('channelSource').textContent = (segment.source || 'unknown').toUpperCase();
+  el('channelHeadline').textContent = segment.headline;
+  typeSummary(segment.summary || '');
+  renderChannelDots();
+  speakSegment(segment);
+}
+
+function stopChannelTimer() {
+  clearInterval(channelTimer);
+  channelTimer = null;
+}
+
+function startChannelTimer() {
+  stopChannelTimer();
+  channelTimer = setInterval(() => stepChannel(1), SEGMENT_MS);
+}
+
+function stepChannel(direction) {
+  if (!channelSegments.length) return;
+  channelIndex = (channelIndex + direction + channelSegments.length) % channelSegments.length;
+  renderChannelSegment();
+}
+
+function setChannelPlaying(playing) {
+  channelPlaying = playing;
+  el('channelPlayBtn').textContent = playing ? 'Pause' : 'Play';
+  if (playing) startChannelTimer(); else stopChannelTimer();
+}
+
+function buildTicker() {
+  const headlines = channelSegments.map((s) => s.headline);
+  el('channelTicker').innerHTML = headlines.concat(headlines)
+    .map((h) => '<span>&#9679; ' + escapeHtml(h) + '</span>')
+    .join('');
+}
+
+async function openChannel() {
+  el('channelOverlay').classList.remove('hidden');
+  setChannelView('loading');
+  showStatic(500);
+  if (!currentStories.length) {
+    setChannelView('error');
+    el('channelErrorText').textContent = 'No stories loaded yet. Search stories first, then open the channel.';
+    return;
+  }
+  try {
+    const payload = await api('/api/channel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stories: currentStories })
+    });
+    channelSegments = payload.segments;
+    channelIndex = 0;
+    buildTicker();
+    setChannelView('live');
+    renderChannelSegment();
+    setChannelPlaying(true);
+    print('success', 'news channel briefed ' + channelSegments.length + ' stories with ' + payload.engine);
+  } catch (error) {
+    setChannelView('error');
+    el('channelErrorText').textContent = error.message;
+    print('error', error.message);
+  }
+}
+
+function closeChannel() {
+  el('channelOverlay').classList.add('hidden');
+  stopChannelTimer();
+  stopChannelAudio();
+  clearInterval(channelTypeTimer);
+}
+
+function toggleChannelMute() {
+  channelMuted = !channelMuted;
+  el('channelMuteBtn').textContent = channelMuted ? '\u{1F507} Muted' : '\u{1F50A} Sound';
+  if (channelMuted) {
+    stopChannelAudio();
+  } else {
+    speakSegment(channelSegments[channelIndex]);
+  }
+}
+
+el('channelBtn').onclick = openChannel;
+el('channelCloseBtn').onclick = closeChannel;
+el('channelRetryBtn').onclick = openChannel;
+el('channelPrevBtn').onclick = () => { stepChannel(-1); if (channelPlaying) startChannelTimer(); };
+el('channelNextBtn').onclick = () => { stepChannel(1); if (channelPlaying) startChannelTimer(); };
+el('channelPlayBtn').onclick = () => setChannelPlaying(!channelPlaying);
+el('channelMuteBtn').onclick = toggleChannelMute;
+el('channelOverlay').addEventListener('click', (event) => {
+  if (event.target.id === 'channelOverlay') closeChannel();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !el('channelOverlay').classList.contains('hidden')) closeChannel();
+});
 
 const stream = new EventSource('/api/stream');
 stream.onmessage = (message) => {
