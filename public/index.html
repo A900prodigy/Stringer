@@ -263,7 +263,22 @@
   .metric b { display: block; font-size: 19px; color: var(--accent); }
   .metric span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }
   .empty { color: var(--muted); font-size: 12.5px; padding: 18px 0; text-align: center; }
-  .hidden { display: none; }
+  .hidden { display: none !important; }
+
+  .cat-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .cat-tab {
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+    padding: 6px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+    cursor: pointer; letter-spacing: .2px; transition: border-color .15s, color .15s, background .15s;
+  }
+  .cat-tab:hover { color: var(--text); border-color: var(--accent); }
+  .cat-tab.active { background: linear-gradient(135deg, #1d7f5c, #10603f); border-color: #26946b; color: #eafff3; }
+  .cat-tv-prompt {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border: 1px solid var(--line); background: var(--panel-2);
+    border-radius: 10px; padding: 9px 12px; margin-bottom: 14px;
+    font-size: 12.5px; color: var(--muted);
+  }
 
   /* ---------- self-healing portal ---------- */
   @property --sweep { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
@@ -485,12 +500,50 @@
   .crt-content { position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column; padding: 22px 26px 0; color: #d8ffe9; font-family: "Segoe UI", Inter, system-ui, sans-serif; }
   .crt-live { display: flex; flex-direction: column; height: 100%; }
   .crt-status { display: flex; align-items: center; gap: 8px; font-size: 10.5px; letter-spacing: 1.4px; text-transform: uppercase; color: #7fe0ac; opacity: .85; }
+  .crt-show-title {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase;
+    color: #c8ffe4; margin-bottom: 8px; padding-bottom: 8px;
+    border-bottom: 1px solid rgba(127,224,172,.22);
+    text-shadow: 0 0 8px rgba(53,224,161,.35);
+  }
   .crt-status .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff5c72; box-shadow: 0 0 6px #ff5c72; animation: rec-blink 1.1s steps(1) infinite; }
   .crt-source { margin-left: auto; color: #6fa78f; }
-  .crt-body { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 10px 6px 18px; }
+  .crt-body { flex: 1; display: flex; align-items: center; gap: 18px; padding: 10px 6px 18px; }
+  .crt-textcol { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
   .crt-headline { font-size: clamp(19px, 3.4vw, 28px); font-weight: 750; line-height: 1.28; text-shadow: 0 0 12px rgba(53,224,161,.45); }
-  .crt-summary { font-size: 14px; line-height: 1.75; color: #b9e8cf; max-width: 92%; min-height: 3.6em; }
+  .crt-summary { font-size: 14px; line-height: 1.75; color: #b9e8cf; max-width: 96%; min-height: 3.6em; }
   .crt-summary .cursor { display: inline-block; width: 8px; height: 14px; background: #7fe0ac; margin-left: 2px; vertical-align: -2px; animation: crt-cursor 1s steps(1) infinite; }
+
+  .crt-anchor { flex: 0 0 96px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .crt-anchor svg { width: 84px; height: 108px; overflow: visible; filter: drop-shadow(0 4px 6px rgba(0,0,0,.5)); }
+  .anchor-group { animation: anchor-bob 3.6s ease-in-out infinite; transform-origin: center bottom; filter: url(#paintWobble); }
+  @keyframes anchor-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+  .anchor-desk { fill: url(#deskGrad); }
+  .anchor-ear { fill: url(#skinGrad); }
+  .anchor-blazer { fill: url(#blazerGrad); }
+  .anchor-lapel { fill: #0a1f16; }
+  .anchor-tie { fill: var(--accent); opacity: .85; }
+  .anchor-collar { fill: #d7ede0; }
+  .anchor-neck-shadow { fill: #0f2a1f; opacity: .55; }
+  .anchor-head { fill: url(#skinGrad); }
+  .anchor-shade { pointer-events: none; }
+  .anchor-shade.forehead { fill: #eafff0; opacity: .14; mix-blend-mode: screen; }
+  .anchor-shade.cheek { fill: #ff9d7a; opacity: .16; mix-blend-mode: multiply; }
+  .anchor-shade.jaw { fill: #06120c; opacity: .22; mix-blend-mode: multiply; }
+  .anchor-hair { fill: url(#hairGrad); }
+  .anchor-hair-stroke { stroke: #3d6b53; stroke-width: 1.1; stroke-linecap: round; fill: none; opacity: .4; }
+  .anchor-brow { stroke: #061109; stroke-width: 1.6; stroke-linecap: round; fill: none; animation: anchor-brow 7s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes anchor-brow { 0%, 88%, 100% { transform: translateY(0); } 90% { transform: translateY(-.8px); } }
+  .anchor-nose { stroke: #0c2318; stroke-width: 1.2; stroke-linecap: round; fill: none; opacity: .7; }
+  .anchor-eye { fill: #051009; animation: anchor-blink 4.6s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  .anchor-eye.right { animation-delay: .08s; }
+  @keyframes anchor-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.1); } }
+  .anchor-mouth { fill: #2b0d0e; transform-origin: center; transform-box: fill-box; transition: transform .05s linear; }
+  .crt-anchor.talking .anchor-mouth { animation: anchor-talk .32s steps(2) infinite; }
+  .crt-anchor.talking-live .anchor-mouth { animation: none; }
+  @keyframes anchor-talk { 0%, 100% { transform: scaleY(.5); } 50% { transform: scaleY(1.5); } }
+  .anchor-grain { opacity: .16; mix-blend-mode: overlay; pointer-events: none; }
+  .crt-anchor-label { font-size: 9px; letter-spacing: 1.4px; color: #6fa78f; text-transform: uppercase; }
   @keyframes crt-cursor { 50% { opacity: 0; } }
   .crt-loading, .crt-error { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 10px; text-align: center; color: #7fe0ac; font-size: 13px; letter-spacing: .6px; padding-bottom: 26px; }
   .crt-loading { justify-content: center; }
@@ -544,7 +597,7 @@
         <div class="row">
           <span class="pill">Newsdata.io</span>
           <span class="pill" id="storyCount">0 stories</span>
-          <button type="button" class="blue icon-btn" id="channelBtn">&#128250; News Channel</button>
+          <button type="button" class="blue icon-btn" id="channelBtn">&#128250; Show on TV</button>
         </div>
       </div>
       <div class="card-body">
@@ -555,6 +608,7 @@
           </div>
           <button class="primary" id="loadBtn">Search Stories</button>
         </div>
+        <div class="cat-tabs" id="categoryTabs" role="tablist" aria-label="Filter by category"></div>
         <div class="stories" id="stories">
           <div class="empty">Loading the live global feed...</div>
         </div>
@@ -633,7 +687,7 @@
   <div class="crt-set">
     <div class="crt-topline">
       <span class="rec"><span class="rec-dot"></span> ON AIR</span>
-      <span>STRINGER NEWS &middot; AUTO-BRIEFED BY GEMINI</span>
+      <span id="channelTopline">STRINGER NEWS &middot; AUTO-BRIEFED BY GEMINI</span>
       <button type="button" class="crt-close" id="channelCloseBtn" aria-label="Close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
       </button>
@@ -655,14 +709,74 @@
             <button type="button" id="channelRetryBtn">Retry</button>
           </div>
           <div id="channelLive" class="crt-live hidden">
+            <div class="crt-show-title" id="channelShowTitle">Top News for Today</div>
             <div class="crt-status">
               <span class="live-dot"></span>
               <span id="channelIndex">STORY 1 / 10</span>
               <span class="crt-source" id="channelSource">&mdash;</span>
             </div>
             <div class="crt-body">
-              <div class="crt-headline" id="channelHeadline"></div>
-              <div class="crt-summary" id="channelSummary"></div>
+              <div class="crt-anchor" id="crtAnchor">
+                <svg viewBox="0 0 100 130" xmlns="http://www.w3.org/2000/svg">
+                  <defs>
+                    <radialGradient id="skinGrad" cx="42%" cy="32%" r="75%">
+                      <stop offset="0%" stop-color="#4a8f6d"/>
+                      <stop offset="55%" stop-color="#2a5a44"/>
+                      <stop offset="100%" stop-color="#153726"/>
+                    </radialGradient>
+                    <linearGradient id="blazerGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#20503c"/>
+                      <stop offset="100%" stop-color="#0a2016"/>
+                    </linearGradient>
+                    <linearGradient id="hairGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="#173226"/>
+                      <stop offset="100%" stop-color="#050d09"/>
+                    </linearGradient>
+                    <linearGradient id="deskGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(53,224,161,.16)"/>
+                      <stop offset="100%" stop-color="rgba(53,224,161,0)"/>
+                    </linearGradient>
+                    <filter id="paintWobble" x="-30%" y="-30%" width="160%" height="160%">
+                      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.05" numOctaves="2" seed="7" result="noise"/>
+                      <feDisplacementMap in="SourceGraphic" in2="noise" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+                    </filter>
+                    <filter id="grainFilter" x="0" y="0" width="100%" height="100%">
+                      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" stitchTiles="stitch" result="grain"/>
+                      <feColorMatrix in="grain" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.85 0 0 0 0"/>
+                    </filter>
+                  </defs>
+                  <g class="anchor-group">
+                    <rect class="anchor-desk" x="4" y="100" width="92" height="30" rx="8"/>
+                    <ellipse class="anchor-ear" cx="22" cy="48" rx="4" ry="6"/>
+                    <ellipse class="anchor-ear" cx="78" cy="48" rx="4" ry="6"/>
+                    <path class="anchor-neck-shadow" d="M42 66 L58 66 L58 78 Q50 84 42 78 Z"/>
+                    <path class="anchor-blazer" d="M12 128 C12 94 28 80 50 80 C72 80 88 94 88 128 Z"/>
+                    <path class="anchor-lapel" d="M50 82 L38 100 L46 96 Z M50 82 L62 100 L54 96 Z"/>
+                    <path class="anchor-collar" d="M40 84 L50 102 L60 84 L53 80 L47 80 Z"/>
+                    <path class="anchor-tie" d="M50 84 L54 92 L50 118 L46 92 Z"/>
+                    <circle class="anchor-head" cx="50" cy="46" r="27"/>
+                    <ellipse class="anchor-shade forehead" cx="50" cy="32" rx="15" ry="8"/>
+                    <ellipse class="anchor-shade cheek" cx="37" cy="53" rx="6.5" ry="4.5"/>
+                    <ellipse class="anchor-shade cheek" cx="63" cy="53" rx="6.5" ry="4.5"/>
+                    <path class="anchor-shade jaw" d="M35 62 Q50 74 65 62 Q50 68 35 62 Z"/>
+                    <path class="anchor-hair" d="M21 46 C19 18 81 18 79 46 C79 28 64 19 50 19 C36 19 21 28 21 46 Z"/>
+                    <path class="anchor-hair-stroke" d="M27 34 Q35 24 46 22"/>
+                    <path class="anchor-hair-stroke" d="M73 34 Q65 24 54 22"/>
+                    <path class="anchor-brow left" d="M35 38 Q40 35 45 37.5"/>
+                    <path class="anchor-brow right" d="M55 37.5 Q60 35 65 38"/>
+                    <ellipse class="anchor-eye left" cx="40" cy="46" rx="2.6" ry="3.4"/>
+                    <ellipse class="anchor-eye right" cx="60" cy="46" rx="2.6" ry="3.4"/>
+                    <path class="anchor-nose" d="M49 48 Q47.5 54 50 56 Q51.5 56 52 55"/>
+                    <path class="anchor-mouth" d="M41 61 Q50 66 59 61 Q50 63 41 61 Z"/>
+                  </g>
+                  <rect class="anchor-grain" x="0" y="0" width="100" height="130"/>
+                </svg>
+                <div class="crt-anchor-label">LIVE DESK</div>
+              </div>
+              <div class="crt-textcol">
+                <div class="crt-headline" id="channelHeadline"></div>
+                <div class="crt-summary" id="channelSummary"></div>
+              </div>
             </div>
             <div class="crt-ticker-wrap">
               <div class="crt-ticker" id="channelTicker"></div>
@@ -919,13 +1033,50 @@ async function runExtraction(article, card, button) {
   }
 }
 
+const CATEGORIES = [
+  { id: '', label: 'All' },
+  { id: 'top', label: 'Top' },
+  { id: 'world', label: 'World' },
+  { id: 'business', label: 'Business' },
+  { id: 'technology', label: 'Technology' },
+  { id: 'sports', label: 'Sports' },
+  { id: 'science', label: 'Science' },
+  { id: 'health', label: 'Health' },
+  { id: 'entertainment', label: 'Entertainment' },
+  { id: 'politics', label: 'Politics' },
+  { id: 'environment', label: 'Environment' }
+];
+let activeCategory = '';
+
+function renderCategoryTabs() {
+  el('categoryTabs').innerHTML = CATEGORIES
+    .map((cat) => '<button type="button" class="cat-tab' + (cat.id === activeCategory ? ' active' : '') +
+      '" data-category="' + cat.id + '" role="tab" aria-selected="' + (cat.id === activeCategory) + '">' +
+      escapeHtml(cat.label) + '</button>')
+    .join('');
+}
+
+el('categoryTabs').addEventListener('click', (event) => {
+  const tab = event.target.closest('.cat-tab');
+  if (!tab) return;
+  activeCategory = tab.dataset.category;
+  renderCategoryTabs();
+  loadStories();
+});
+
+renderCategoryTabs();
+
 async function loadStories() {
   const button = el('loadBtn');
   button.disabled = true;
   button.textContent = 'Contacting Newsdata.io...';
   try {
     const query = el('query').value.trim();
-    const payload = await api('/api/news' + (query ? '?q=' + encodeURIComponent(query) : ''));
+    const params = new URLSearchParams();
+    if (query) params.set('q', query);
+    if (activeCategory) params.set('category', activeCategory);
+    const qs = params.toString();
+    const payload = await api('/api/news' + (qs ? '?' + qs : ''));
     currentStories = payload.articles.slice(0, STORY_LIMIT);
     renderStories(currentStories);
   } catch (error) {
@@ -1146,7 +1297,9 @@ el('themeBtn').onclick = () => {
 applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
 /* ---------- CRT news channel ---------- */
-const SEGMENT_MS = 8000;
+const MIN_SEGMENT_MS = 12000;
+const MAX_SEGMENT_MS = 22000;
+const READING_MS_PER_WORD = 250;
 let channelSegments = [];
 let channelIndex = 0;
 let channelTimer = null;
@@ -1155,6 +1308,8 @@ let channelTypeTimer = null;
 let channelMuted = false;
 let channelAudio = null;
 let channelAudioToken = 0;
+let audioCtx = null;
+let mouthRafId = null;
 
 function showStatic(ms) {
   const layer = el('channelStatic');
@@ -1176,12 +1331,58 @@ function typeSummary(text) {
   const cursor = document.createElement('span');
   cursor.className = 'cursor';
   let i = 0;
+  if (channelMuted) setAnchorTalking(true);
   channelTypeTimer = setInterval(() => {
     i += 3;
     node.textContent = text.slice(0, i);
     node.appendChild(cursor);
-    if (i >= text.length) clearInterval(channelTypeTimer);
+    if (i >= text.length) {
+      clearInterval(channelTypeTimer);
+      if (channelMuted) setAnchorTalking(false);
+    }
   }, 18);
+}
+
+function setAnchorTalking(active) {
+  el('crtAnchor').classList.toggle('talking', active);
+}
+
+function stopMouthAnimation() {
+  if (mouthRafId) { cancelAnimationFrame(mouthRafId); mouthRafId = null; }
+  el('crtAnchor').classList.remove('talking-live');
+  const mouth = document.querySelector('.anchor-mouth');
+  if (mouth) mouth.style.transform = '';
+}
+
+function animateMouthFromAudio(audioEl) {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const source = audioCtx.createMediaElementSource(audioEl);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+    const mouth = document.querySelector('.anchor-mouth');
+    el('crtAnchor').classList.add('talking-live');
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const v = (data[i] - 128) / 128;
+        sum += v * v;
+      }
+      const rms = Math.sqrt(sum / data.length);
+      const openness = Math.min(1, rms * 7);
+      if (mouth) mouth.style.transform = 'scaleY(' + (0.5 + openness * 1.3) + ')';
+      mouthRafId = requestAnimationFrame(tick);
+    };
+    tick();
+    return true;
+  } catch (error) {
+    return false;
+  }
 }
 
 function stopChannelAudio() {
@@ -1191,38 +1392,33 @@ function stopChannelAudio() {
     channelAudio.src = '';
     channelAudio = null;
   }
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  stopMouthAnimation();
+  setAnchorTalking(false);
+}
+
+function speakWithBrowserVoice(text, token) {
+  if (!('speechSynthesis' in window)) {
+    print('warn', 'this browser has no built-in speech synthesis, staying silent for this story');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  utterance.onstart = () => { if (token === channelAudioToken) setAnchorTalking(true); };
+  utterance.onend = () => { if (token === channelAudioToken) setAnchorTalking(false); };
+  utterance.onerror = () => { if (token === channelAudioToken) setAnchorTalking(false); };
+  window.speechSynthesis.speak(utterance);
 }
 
 async function speakSegment(segment) {
   if (channelMuted || !segment) return;
   const token = ++channelAudioToken;
-  try {
-    const response = await fetch('/api/channel-speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: segment.headline + '. ' + segment.summary })
-    });
-    if (token !== channelAudioToken) return;
-    if (!response.ok) {
-      const detail = await response.json().catch(() => ({}));
-      throw new Error(detail.error || ('narration request failed with ' + response.status));
-    }
-    const url = URL.createObjectURL(await response.blob());
-    if (token !== channelAudioToken) { URL.revokeObjectURL(url); return; }
-    const audio = new Audio(url);
-    audio.onended = () => URL.revokeObjectURL(url);
-    channelAudio = audio;
-    await audio.play();
-  } catch (error) {
-    if (token === channelAudioToken) {
-      print('error', 'channel narration failed: ' + error.message);
-      if (error.name === 'NotAllowedError') {
-        channelMuted = true;
-        el('channelMuteBtn').textContent = '\u{1F507} Tap for Sound';
-        print('warn', 'browser blocked autoplay audio, tap Sound to enable narration');
-      }
-    }
-  }
+  // Only the headline is read aloud - it's short enough to finish before the next story
+  // comes on, so narration never gets cut off mid-sentence. The full summary still
+  // appears on screen via the typewriter effect, just isn't spoken.
+  speakWithBrowserVoice(segment.headline, token);
 }
 
 function renderChannelDots() {
@@ -1249,9 +1445,17 @@ function stopChannelTimer() {
   channelTimer = null;
 }
 
+function getSegmentDisplayTime() {
+  const segment = channelSegments[channelIndex];
+  if (!segment) return MIN_SEGMENT_MS;
+  const text = ((segment.headline || '') + ' ' + (segment.summary || '')).trim();
+  const wordCount = text ? text.split(/\s+/).length : 0;
+  return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, wordCount * READING_MS_PER_WORD));
+}
+
 function startChannelTimer() {
   stopChannelTimer();
-  channelTimer = setInterval(() => stepChannel(1), SEGMENT_MS);
+  channelTimer = setTimeout(() => stepChannel(1), getSegmentDisplayTime());
 }
 
 function stepChannel(direction) {
@@ -1273,32 +1477,69 @@ function buildTicker() {
     .join('');
 }
 
+function buildRawSegments(stories) {
+  return stories.map((story) => ({
+    headline: story.title || 'Untitled',
+    summary: story.description || 'No summary provided by the discovery API.',
+    source: story.source || 'unknown',
+    link: story.link || '',
+    raw: true
+  }));
+}
+
 async function openChannel() {
   el('channelOverlay').classList.remove('hidden');
-  setChannelView('loading');
-  showStatic(500);
+  const activeLabel = CATEGORIES.find((c) => c.id === activeCategory);
+  const label = activeLabel ? activeLabel.label : (activeCategory || '');
+  const today = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  el('channelShowTitle').textContent = (label ? 'Top ' + label + ' News' : 'Top News') + ' for Today \u2014 ' + today;
+  el('channelTopline').textContent = activeCategory
+    ? 'STRINGER NEWS \u2022 ' + label.toUpperCase() + ' DESK'
+    : 'STRINGER NEWS \u2022 AUTO-BRIEFED BY GEMINI';
   if (!currentStories.length) {
     setChannelView('error');
-    el('channelErrorText').textContent = 'No stories loaded yet. Search stories first, then open the channel.';
+    el('channelErrorText').textContent = activeCategory
+      ? 'No ' + label + ' stories available right now. Try another category.'
+      : 'No stories loaded yet. Search stories first, then open the channel.';
     return;
   }
+
+  // Show the scraped headlines instantly - no waiting on any API for this.
+  channelSegments = buildRawSegments(currentStories);
+  channelIndex = 0;
+  buildTicker();
+  setChannelView('live');
+  showStatic(400);
+  renderChannelSegment();
+  setChannelPlaying(true);
+  print('info', 'channel live instantly from ' + channelSegments.length + ' scraped stories');
+
+  // In the background, try to upgrade to Gemini-polished anchor copy. If it's slow or fails,
+  // the raw scraped headlines above just keep playing - the channel never breaks.
+  const openToken = channelAudioToken;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000);
   try {
-    const payload = await api('/api/channel', {
+    const response = await fetch('/api/channel', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stories: currentStories })
+      body: JSON.stringify({ stories: currentStories }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const payload = await response.json();
+    if (el('channelOverlay').classList.contains('hidden')) return;
     channelSegments = payload.segments;
-    channelIndex = 0;
     buildTicker();
-    setChannelView('live');
-    renderChannelSegment();
-    setChannelPlaying(true);
-    print('success', 'news channel briefed ' + channelSegments.length + ' stories with ' + payload.engine);
+    renderChannelDots();
+    if (channelAudioToken === openToken) {
+      renderChannelSegment();
+    }
+    print('success', 'channel upgraded with Gemini-polished commentary (' + payload.engine + ')');
   } catch (error) {
-    setChannelView('error');
-    el('channelErrorText').textContent = error.message;
-    print('error', error.message);
+    clearTimeout(timeout);
+    print('warn', 'Gemini upgrade unavailable, staying on scraped headlines (' + error.message + ')');
   }
 }
 
