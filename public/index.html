@@ -597,7 +597,7 @@
         <div class="row">
           <span class="pill">Newsdata.io</span>
           <span class="pill" id="storyCount">0 stories</span>
-          <button type="button" class="blue icon-btn" id="channelBtn">&#128250; News Channel</button>
+          <button type="button" class="blue icon-btn" id="channelBtn">&#128250; Show on TV</button>
         </div>
       </div>
       <div class="card-body">
@@ -609,10 +609,6 @@
           <button class="primary" id="loadBtn">Search Stories</button>
         </div>
         <div class="cat-tabs" id="categoryTabs" role="tablist" aria-label="Filter by category"></div>
-        <div class="cat-tv-prompt hidden" id="categoryTvPrompt">
-          <span id="categoryTvPromptText"></span>
-          <button type="button" class="blue icon-btn" id="categoryTvPromptBtn">&#128250; Show on TV</button>
-        </div>
         <div class="stories" id="stories">
           <div class="empty">Loading the live global feed...</div>
         </div>
@@ -1068,20 +1064,6 @@ el('categoryTabs').addEventListener('click', (event) => {
   loadStories();
 });
 
-function updateCategoryTvPrompt() {
-  const prompt = el('categoryTvPrompt');
-  if (!activeCategory || !currentStories.length) {
-    prompt.classList.add('hidden');
-    return;
-  }
-  const activeLabel = CATEGORIES.find((c) => c.id === activeCategory);
-  const label = activeLabel ? activeLabel.label : activeCategory;
-  el('categoryTvPromptText').textContent = currentStories.length + ' ' + label + ' stories ready';
-  prompt.classList.remove('hidden');
-}
-
-el('categoryTvPromptBtn').onclick = openChannel;
-
 renderCategoryTabs();
 
 async function loadStories() {
@@ -1097,7 +1079,6 @@ async function loadStories() {
     const payload = await api('/api/news' + (qs ? '?' + qs : ''));
     currentStories = payload.articles.slice(0, STORY_LIMIT);
     renderStories(currentStories);
-    updateCategoryTvPrompt();
   } catch (error) {
     print('error', error.message);
   } finally {
@@ -1316,7 +1297,9 @@ el('themeBtn').onclick = () => {
 applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
 /* ---------- CRT news channel ---------- */
-const SEGMENT_MS = 8000;
+const MIN_SEGMENT_MS = 12000;
+const MAX_SEGMENT_MS = 22000;
+const READING_MS_PER_WORD = 250;
 let channelSegments = [];
 let channelIndex = 0;
 let channelTimer = null;
@@ -1462,9 +1445,17 @@ function stopChannelTimer() {
   channelTimer = null;
 }
 
+function getSegmentDisplayTime() {
+  const segment = channelSegments[channelIndex];
+  if (!segment) return MIN_SEGMENT_MS;
+  const text = ((segment.headline || '') + ' ' + (segment.summary || '')).trim();
+  const wordCount = text ? text.split(/\s+/).length : 0;
+  return Math.min(MAX_SEGMENT_MS, Math.max(MIN_SEGMENT_MS, wordCount * READING_MS_PER_WORD));
+}
+
 function startChannelTimer() {
   stopChannelTimer();
-  channelTimer = setInterval(() => stepChannel(1), SEGMENT_MS);
+  channelTimer = setTimeout(() => stepChannel(1), getSegmentDisplayTime());
 }
 
 function stepChannel(direction) {
