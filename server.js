@@ -11,9 +11,13 @@ const config = {
   collectorId: process.env.BRIGHTDATA_COLLECTOR_ID || '',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
   geminiModel: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
-  geminiTtsModel: process.env.GEMINI_TTS_MODEL || 'gemini-3.1-flash-tts-preview',
-  geminiVoice: process.env.GEMINI_VOICE || 'charon'
+  elevenLabsApiKey: process.env.ELEVENLABS_API_KEY || '',
+  elevenLabsVoiceId: process.env.ELEVENLABS_VOICE_ID || 'JBFqnCBsd6RMkjVDRZzb',
+  elevenLabsModel: process.env.ELEVENLABS_MODEL || 'eleven_multilingual_v2',
+  elevenLabsFormat: process.env.ELEVENLABS_OUTPUT_FORMAT || 'mp3_44100_128'
 };
+
+const ELEVENLABS_TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
 
 const CLI_ENTRY = require.resolve('@brightdata/cli/dist/index.js');
 const CLI_TIMEOUT_MS = 900000;
@@ -503,83 +507,64 @@ async function translateWithGemini(headline, summary, language) {
   }
 }
 
-function wavBuffer(pcm, sampleRate) {
-  const header = Buffer.alloc(44);
-  header.write('RIFF', 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write('WAVE', 8);
-  header.write('fmt ', 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write('data', 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
+async function elevenLabsErrorDetail(response) {
+  const payload = await response.json().catch(() => null);
+  const detail = payload && payload.detail;
+  if (typeof detail === 'string') return detail;
+  if (detail && typeof detail.message === 'string') return detail.message;
+  return `HTTP ${response.status}`;
 }
 
-async function speakWithGemini(text) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiTtsModel}:generateContent`;
+async function speakWithElevenLabs(text) {
+  if (!config.elevenLabsApiKey) {
+    throw new HttpError(500, 'ELEVENLABS_API_KEY is not configured in .env');
+  }
+  const endpoint = `${ELEVENLABS_TTS_URL}/${encodeURIComponent(config.elevenLabsVoiceId)}` +
+    `?output_format=${encodeURIComponent(config.elevenLabsFormat)}`;
   const body = JSON.stringify({
-    contents: [
-      {
-        parts: [
-          {
-            text: [
-              'Read the following news briefing aloud in a calm, measured newsreader voice.',
-              'Speak only the transcript, do not add commentary.',
-              '',
-              `Transcript:\n${text}`
-            ].join('\n')
-          }
-        ]
-      }
-    ],
-    generationConfig: {
-      responseModalities: ['AUDIO'],
-      speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: config.geminiVoice } } }
-    }
+    text,
+    model_id: config.elevenLabsModel,
+    voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.1, use_speaker_boost: true }
   });
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
-      body,
-      signal: AbortSignal.timeout(120000)
-    });
-    const payload = await response.json().catch(() => null);
+    let response;
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'xi-api-key': config.elevenLabsApiKey,
+          Accept: 'audio/mpeg'
+        },
+        body,
+        signal: AbortSignal.timeout(120000)
+      });
+    } catch (error) {
+      const cause = error.cause && error.cause.message ? `: ${error.cause.message}` : '';
+      throw new HttpError(502, `Could not reach the ElevenLabs API${cause}`);
+    }
 
     if (response.status >= 500 && attempt === 1) {
-      log('warn', `TTS returned ${response.status}, retrying once`);
+      log('warn', `ElevenLabs returned ${response.status}, retrying once`);
       continue;
     }
     if (!response.ok) {
-      const detail = payload && payload.error ? payload.error.message : `HTTP ${response.status}`;
-      throw new HttpError(response.status === 429 ? 429 : 502, `Gemini TTS rejected the request: ${detail}`);
+      const detail = await elevenLabsErrorDetail(response);
+      throw new HttpError(response.status === 429 ? 429 : 502, `ElevenLabs rejected the request: ${detail}`);
     }
 
-    const candidate = payload && payload.candidates && payload.candidates[0];
-    const part = candidate && candidate.content && candidate.content.parts
-      ? candidate.content.parts.find((item) => item.inlineData)
-      : null;
-    if (!part) {
+    const audio = Buffer.from(await response.arrayBuffer());
+    if (!audio.length) {
       if (attempt === 1) {
-        log('warn', 'TTS returned text instead of audio, retrying once');
+        log('warn', 'ElevenLabs returned an empty stream, retrying once');
         continue;
       }
-      throw new HttpError(502, 'Gemini TTS returned no audio');
+      throw new HttpError(502, 'ElevenLabs returned no audio');
     }
-
-    const pcm = Buffer.from(part.inlineData.data, 'base64');
-    const rateMatch = /rate=(\d+)/.exec(part.inlineData.mimeType || '');
-    const rate = rateMatch ? Number(rateMatch[1]) : 24000;
-    return { audio: wavBuffer(pcm, rate), seconds: pcm.length / (rate * 2) };
+    return { audio, contentType: response.headers.get('content-type') || 'audio/mpeg' };
   }
-  throw new HttpError(502, 'Gemini TTS failed after a retry');
+  throw new HttpError(502, 'ElevenLabs TTS failed after a retry');
 }
 
 async function fetchNews(query) {
@@ -669,7 +654,8 @@ app.get('/api/status', (request, response) => {
       newsdata: Boolean(config.newsdataApiKey),
       brightDataCli: Boolean(config.brightDataApiKey),
       collector: Boolean(config.collectorId),
-      gemini: Boolean(config.geminiApiKey)
+      gemini: Boolean(config.geminiApiKey),
+      elevenlabs: Boolean(config.elevenLabsApiKey)
     }
   });
 });
@@ -976,14 +962,11 @@ app.post('/api/speak', async (request, response, next) => {
     if (!summary) {
       throw new HttpError(409, 'Generate a summary first, there is nothing to read aloud');
     }
-    if (!config.geminiApiKey) {
-      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
-    }
     const started = Date.now();
-    log('info', `voicing the summary with ${config.geminiVoice} on ${config.geminiTtsModel}`);
-    const spoken = await speakWithGemini(`${summary.headline}. ${summary.summary}`);
-    log('success', `${spoken.seconds.toFixed(1)}s of audio rendered in ${Date.now() - started}ms`);
-    response.setHeader('Content-Type', 'audio/wav');
+    log('info', `voicing the summary with ElevenLabs voice ${config.elevenLabsVoiceId} on ${config.elevenLabsModel}`);
+    const spoken = await speakWithElevenLabs(`${summary.headline}. ${summary.summary}`);
+    log('success', `${(spoken.audio.length / 1024).toFixed(1)}KB of audio rendered in ${Date.now() - started}ms`);
+    response.setHeader('Content-Type', spoken.contentType);
     response.setHeader('Cache-Control', 'no-store');
     response.send(spoken.audio);
   } catch (error) {
@@ -997,13 +980,10 @@ app.post('/api/channel-speak', async (request, response, next) => {
     if (!text) {
       throw new HttpError(400, 'No text was sent to voice');
     }
-    if (!config.geminiApiKey) {
-      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
-    }
     const started = Date.now();
-    const spoken = await speakWithGemini(text.slice(0, 2000));
-    log('info', `voiced a channel segment in ${Date.now() - started}ms`);
-    response.setHeader('Content-Type', 'audio/wav');
+    const spoken = await speakWithElevenLabs(text.slice(0, 2000));
+    log('info', `voiced a channel segment with ElevenLabs in ${Date.now() - started}ms`);
+    response.setHeader('Content-Type', spoken.contentType);
     response.setHeader('Cache-Control', 'no-store');
     response.send(spoken.audio);
   } catch (error) {

@@ -82,9 +82,16 @@ BRIGHTDATA_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 BRIGHTDATA_ZONE=your_web_unlocker_zone_name
 SBR_WS_ENDPOINT=wss://brd-customer-<id>-zone-<zone>:<password>@brd.superproxy.io:9222
 BRIGHTDATA_COLLECTOR_ID=your_collector_id
+GEMINI_API_KEY=your_gemini_key
+ELEVENLABS_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
+ELEVENLABS_MODEL=eleven_multilingual_v2
+ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
 ```
 
 `BRIGHTDATA_ZONE` must match a zone that exists in your Bright Data control panel. Until a zone is created, the pipeline logs the rejection and drops to the next transport automatically.
+
+Narration runs on ElevenLabs text-to-speech: `ELEVENLABS_API_KEY` is required for the **Listen** button, and `ELEVENLABS_VOICE_ID` can be any voice from your ElevenLabs voice library.
 
 ### 4. Fire Up the Server
 
