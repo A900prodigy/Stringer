@@ -1,141 +1,219 @@
-# 📰 Autonomous Self-Healing News Aggregator Pipeline
+# Stringer
 
-An AI-driven, zero-maintenance news extraction pipeline that discovers live global articles using **Newsdata.io**, performs deep full-text extraction via **Puppeteer & Bright Data**, and autonomously repairs its own parsing selectors using the **Bright Data Scraper Studio CLI** when target website layouts change.
+**A news pipeline that repairs its own scrapers.**
 
----
+Built for [Into the Scrape-Verse](https://www.wemakedevs.org/hackathons/scrape-verse) (WeMakeDevs × Bright Data, August 2026).
 
-## 🚀 The Problem & Hackathon Pitch
-
-* **The Problem:** Web scrapers are notoriously brittle. The moment a publisher shifts its HTML structure or renames a CSS class (**DOM Drift**), pipelines shatter, data turns into `undefined`, and developer time is burned on manual rewrites.
-* **The Solution:** An **Autonomous Data Pipeline** that monitors its own data integrity. On structural failure it invokes an automated refactoring engine that re-crawls the target, infers a new parsing contract, verifies it against the live DOM, and hot-swaps the production selectors — with no code deployment and no server restart.
+Stringer discovers live news, extracts full article text with a custom Bright Data Scraper Studio collector, and — when a publisher's markup defeats that collector — repairs itself from a plain-language description of what broke. The repaired collector keeps its ID, so nothing downstream ever sees a gap. The structured output then feeds a summariser, an 18-language translator, and a text-to-speech news channel.
 
 ---
 
-## 🛠️ Architecture & Tech Stack
+## The problem
 
-```text
-   [ Newsdata.io ] ────── (Gives Headline & Target URL) ─────► [ Node.js Backend Engine ]
-                                                                      │
-                                                                      ▼ (Spawns Browser)
-   [ Web UI Dashboard ] ◄─── (Displays Self-Healed Data) ──── [ Bright Data Scraping Browser ]
-             ▲                                                        │
-             │ (Streams Terminal Code Patches)                        ▼ (If 'undefined' detected)
-             +─────────────────────────────────────────────── [ Scraper Studio AI CLI ]
+Every scraping tutorial ends when the scraper runs. Real scrapers end when a site changes a class name and the pipeline starts returning `null` — quietly, at 3am, with no error and no alert. Someone notices a week later when the dashboard is empty.
+
+News aggregation makes this worse than usual. There is no single site to maintain a scraper for. There are thousands of publishers, each with its own markup, and the feed hands you a new one whenever a story breaks somewhere unexpected. A scraper built for one publisher is, by construction, broken for the next.
+
+## The approach
+
+Stringer treats extraction failure as a normal event with an automatic response, rather than an exception with a human on the other end.
+
+1. **Discovery** — Newsdata.io returns live stories and their URLs.
+2. **Extraction** — a Scraper Studio collector pulls `headline`, `author`, `publish_date`, `article_body`.
+3. **Drift detection** — output is checked before it is trusted. Missing headline, absent body, or under 250 characters marks the run `COLLECTOR_DRIFT`.
+4. **Repair** — one of two paths, chosen automatically:
+   - The publisher already has a collector → `bdata scraper heal` rewrites the extraction, staged for approval.
+   - The publisher has no collector → `bdata scraper create` builds one dedicated to that domain.
+5. **Delivery** — clean records drive summaries, translations, and audio.
+
+The distinction in step 4 is the design decision the project rests on. Healing a collector against a domain it was never built for would degrade it for the domains it already handles. So Stringer grows a fleet — one collector per publisher, named `stringer-<hostname>` — and heals each only against its own domain.
+
+---
+
+## Self-healing, demonstrated
+
+`POST /api/simulate` is the honest version of a broken-scraper demo. It asks Newsdata.io for the live feed, filters to publishers this collector has never successfully extracted from, and points the collector at them until one fails. Nothing is staged and nothing is hardcoded — the failing publisher differs every run, because the feed does.
+
+What that produces:
+
+```
+warn   pointing collector c_8f2a91 at citizen.co.za, a publisher it was never trained on
+error  collector returned no usable data for citizen.co.za, fields came back null
 ```
 
-* **Upstream Discovery:** [Newsdata.io](https://newsdata.io) — live global metadata arrays and article URLs
-* **Orchestration & UI:** Node.js, Express, Puppeteer Core, Cheerio, Server-Sent Events
-* **Proxy & Browser Infrastructure:** [Bright Data](https://brightdata.com) Scraping Browser + Web Unlocker
-* **AI Self-Healing Engine:** Bright Data Scraper Studio CLI with an embedded DOM-inference fallback
+The heal prompt is then generated from the observed failure, naming the fields that came back null and the URL they failed on:
 
-### Transport Fallback Chain
-
-Every extraction walks this chain and uses the first transport that returns a rendered document:
-
-1. `bright-data-scraping-browser` — Puppeteer connects over `SBR_WS_ENDPOINT`
-2. `bright-data-web-unlocker` — `api.brightdata.com/request` with your zone
-3. `local-chrome` — Puppeteer launches `CHROME_PATH`
-4. `direct-origin` — plain HTTPS fetch
-
----
-
-## 📂 Project Structure
-
-```text
-node-brightdata-demo/
-├── public/
-│   └── index.html       # Frontend Interactive Dashboard
-├── server.js            # Express backend, transport chain, healing engine
-├── selectors.json       # Hot-swappable live parsing contract
-├── .env                 # Runtime keys (git ignored)
-├── .env.example         # Template for collaborators
-└── package.json
+```
+On https://citizen.co.za/news/... this scraper returns headline and article_body as null.
+Update the extraction so those fields are captured on citizen.co.za article pages,
+and leave fields that already work on other pages unchanged.
+The heal is done when headline and article_body are non-empty for the URL above;
+author may stay null.
 ```
 
+Scraper Studio's progress streams into the UI as it works, and the repaired template is committed automatically — a patch left uncommitted would leave the collector broken, so approval is part of healing rather than a second decision. The collector ID before the heal and after it is the same value — see `samples/04-heal-patch.json` and `samples/05-extraction-recovered.json`.
+
 ---
 
-## ⚡ Quick Start
+## Structured output
 
-### 1. Prerequisites
+A healthy extraction:
 
-[Node.js v18+](https://nodejs.org) and, optionally, the Bright Data CLI:
+```json
+{
+  "url": "https://abbynews.com/2026/08/21/iio-investigating-williams-lake-incident...",
+  "collectorId": "c_mt47g7832h7g3f8ktk",
+  "status": "HEALTHY",
+  "article": {
+    "headline": "IIO investigating Williams Lake incident that left woman seriously injured",
+    "author": "By Laísa Condé/Williams Lake Tribune",
+    "published": "Published 2:56 pm Friday, August 21, 2026",
+    "content": "...",
+    "stats": { "characters": 1793, "words": 285 }
+  },
+  "healable": false,
+  "durationMs": 9004
+}
+```
+
+The same shape with `status: "COLLECTOR_DRIFT"`, `healable: true`, and null fields is what triggers a repair.
+
+### Captured stages
+
+Every stage of a real run is committed in [`samples/`](samples/), captured from a live pipeline rather than written by hand. API keys are redacted; Bright Data collector IDs are published deliberately, since they are the proof of work.
+
+| File | Produced by | Shows |
+| --- | --- | --- |
+| `01-discovery.json` | `GET /api/news` | Newsdata.io discovery feed, normalised |
+| `02-extraction-healthy.json` | `POST /api/extract` | Structured article output, collector working |
+| `03-extraction-drift.json` | `POST /api/simulate` | The collector failing on a publisher it was never built for |
+| `04-heal-patch.json` | `POST /api/heal` → `bdata scraper heal` | Scraper Studio rewriting the extraction, committed automatically |
+| `05-extraction-recovered.json` | `POST /api/extract` | Same collector ID, same shape, data flowing again |
+| `06-summary.json` | `POST /api/summarize` | What the structured output powers downstream |
+
+Two collector IDs appear across those files, and the difference is the point:
+
+- `03` runs one publisher's collector against a **different** publisher, which is how drift is induced on demand instead of waiting for a real site change. Every field comes back null.
+- `04` and `05` repair the failing publisher's **own** collector. That ID is identical before and after the heal — the template changed underneath a live endpoint, and nothing downstream was touched or redeployed.
+
+`04` carries `"approved": true`, so the rewritten template was committed rather than left staged. `05` is that same collector re-run, returning 285 words where it previously returned nothing.
+
+---
+
+## Downstream
+
+Structured output is only worth having if something consumes it. Stringer's collectors feed:
+
+- **Summarisation** — Gemini returns a schema-constrained headline and four-sentence summary, with compression ratio reported against the source.
+- **Translation** — 18 languages, always re-translated from the English original rather than chained through a previous translation.
+- **Broadcast** — ElevenLabs renders summaries to audio. `/api/channel` briefs up to ten stories into anchor-style segments and plays them as a continuous bulletin, with the anchor's mouth driven by a live analyser node on the audio stream.
+
+---
+
+## Architecture
+
+```
+Newsdata.io ──► discovery ──► Bright Data Scraper Studio collector ──► structured JSON
+                                        │                                    │
+                            drift detected? │                                    ▼
+                                        ▼                              Gemini: summarise
+                          bdata scraper heal / create                  Gemini: translate
+                                        │                              Gemini: TTS
+                                        ▼                                    │
+                              same collector ID ◄───────────────────────────┘
+```
+
+Node.js and Express, no build step, no database. Server-sent events stream the pipeline log to the browser live, which is what makes the healing visible rather than something you read about afterwards.
+
+The Bright Data CLI is invoked as a child process with arguments passed as an array — never through a shell — and every outbound call carries a timeout. CLI failures are translated into specific, actionable messages: a refactor already in progress, a concurrent-job cap, a job that can no longer be approved, and a polling timeout are each distinguished rather than collapsed into "something went wrong".
+
+### Layout
+
+```
+server.js                  pipeline, CLI orchestration, HTTP API
+public/index.html          dashboard, live log, news channel
+samples/                   example structured output, stage by stage
+```
+
+### API
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/status` | Collector registry, metrics, which integrations are configured |
+| `GET /api/stream` | Server-sent event log |
+| `GET /api/news` | Newsdata.io discovery |
+| `POST /api/extract` | Run the collector for a URL |
+| `POST /api/simulate` | Find a publisher that breaks the collector |
+| `POST /api/heal` | Heal the collector and commit the patch, or build one if the publisher has none |
+| `POST /api/summarize` | Summarise the last extraction |
+| `POST /api/translate` | Translate the last summary |
+| `POST /api/speak` | Voice the last summary |
+| `POST /api/channel` | Brief several stories as broadcast segments |
+
+---
+
+## Setup
+
+Requires Node.js 18 or later.
 
 ```bash
-npm install -g @brightdata/cli
-```
-
-If the CLI is not authenticated or not on `PATH`, the pipeline transparently falls back to its embedded DOM-inference healer, so the demo never blocks.
-
-### 2. Install Dependencies
-
-```bash
+git clone <repository-url>
+cd Stringer
 npm install
+cp .env.example .env
 ```
 
-### 3. Environment Configuration
+Fill in `.env`:
 
-Keys live in `.env`, never in source:
+| Variable | Required | Notes |
+| --- | --- | --- |
+| `BRIGHTDATA_API_KEY` | yes | From `npx -p @brightdata/cli bdata login` |
+| `BRIGHTDATA_COLLECTOR_ID` | no | Optional `c_*` fallback. Leave blank and collectors are built on demand |
+| `NEWSDATA_API_KEY` | yes | Free tier at newsdata.io |
+| `GEMINI_API_KEY` | yes | Google AI Studio |
+| `ELEVENLABS_API_KEY` | yes | ElevenLabs profile, for broadcast narration |
+| `PORT` | no | Defaults to 3000 |
+| `GEMINI_MODEL` | no | Defaults to `gemini-3.6-flash` |
+| `ELEVENLABS_VOICE_ID` | no | Defaults to `JBFqnCBsd6RMkjVDRZzb` |
+| `ELEVENLABS_MODEL` | no | Defaults to `eleven_multilingual_v2` |
+| `ELEVENLABS_OUTPUT_FORMAT` | no | Defaults to `mp3_44100_128` |
 
-```ini
-NEWSDATA_API_KEY=pub_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-BRIGHTDATA_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-BRIGHTDATA_ZONE=your_web_unlocker_zone_name
-SBR_WS_ENDPOINT=wss://brd-customer-<id>-zone-<zone>:<password>@brd.superproxy.io:9222
-BRIGHTDATA_COLLECTOR_ID=your_collector_id
-GEMINI_API_KEY=your_gemini_key
-ELEVENLABS_API_KEY=sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-ELEVENLABS_VOICE_ID=JBFqnCBsd6RMkjVDRZzb
-ELEVENLABS_MODEL=eleven_multilingual_v2
-ELEVENLABS_OUTPUT_FORMAT=mp3_44100_128
+If you have no collector yet, you do not need to create one. Extract or simulate
+against any publisher and Stringer builds one for that domain on first contact,
+naming it `stringer-<hostname>` and describing the fields itself. Creation takes
+5-15 minutes.
+
+To pre-seed one manually instead:
+
+```bash
+npx -p @brightdata/cli bdata login
+npx -p @brightdata/cli bdata scraper create https://<publisher>/<article> \
+  "Extract one record per news article page. Fields: headline, author, publish_date, article_body."
 ```
 
-`BRIGHTDATA_ZONE` must match a zone that exists in your Bright Data control panel. Until a zone is created, the pipeline logs the rejection and drops to the next transport automatically.
-
-Narration runs on ElevenLabs text-to-speech: `ELEVENLABS_API_KEY` is required for the **Listen** button, and `ELEVENLABS_VOICE_ID` can be any voice from your ElevenLabs voice library.
-
-### 4. Fire Up the Server
+Name it `stringer-<hostname>` so Stringer's registry picks it up.
 
 ```bash
 npm start
 ```
 
-Open **http://localhost:3000**
+Open `http://localhost:3000`. On boot, Stringer loads every `stringer-*` collector on your account and reports how many it recovered.
+
+### Try the healing loop
+
+1. **Load stories** — pull the live feed.
+2. **Simulate drift** — Stringer finds a publisher its collector cannot read and fails on camera.
+3. **Heal** — watch Scraper Studio's steps stream in, then commit automatically.
+4. **Extract again** — same collector ID, data flowing.
 
 ---
 
-## 📺 The Winning 3-Step Live Demo Storyline
+## Notes for reviewers
 
-1. **The Fresh Discovery** — Click **Load Fresh Newsdata.io Stories**. Newsdata.io returns clean JSON headlines and URLs, but no full body text — useless for LLM training or content generation on its own.
-2. **Healthy Deep Extraction** — Click **Extract Full Text** on a story card. The backend routes through Bright Data, extracts the body, and the dashboard reports `HEALTHY`, the matched selector, word count and transport used.
-3. **The Climax** — Click **Simulate Selector Drift**, then re-extract. The parser returns `null` / `undefined` and the banner flips to `DOM_DRIFT_DETECTED`. Click **Heal With Scraper Studio AI**: the terminal streams the `bdata scraper heal` invocation, candidate-container scoring, the verified patch, and the generated JavaScript parser. Click **Approve & Hot-Swap** to run the `bdata scraper approve <token>` flow, bump `selectors.json` to the next generation, and re-extract healthy data — with the server still running.
+**Running costs money.** Every extraction consumes Bright Data credits and every summary consumes Gemini quota. `/api/heal` mutates collectors on your Bright Data account — the only side effect here that leaves your machine.
 
----
+**No authentication.** Stringer binds all interfaces with open API routes and no rate limiting, which is fine on a laptop and wrong on a public host. Bind to `127.0.0.1` if that matters to you. Pipeline state is process-global, so it is single-user by design.
 
-## 🔌 API Surface
+**Data sources.** Public news article pages only, discovered through Newsdata.io. No login-walled, paywalled, or government sites. Google News redirect URLs are filtered out of drift simulation because they are not publisher pages.
 
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/status` | Live profile version, metrics, transports, drift state |
-| `GET` | `/api/stream` | SSE feed powering the dashboard terminal |
-| `GET` | `/api/news?q=` | Newsdata.io discovery |
-| `POST` | `/api/extract` | Deep extraction + integrity verdict |
-| `POST` | `/api/drift` | Toggle the simulated publisher layout change |
-| `POST` | `/api/heal` | Generate and stage a verified patch |
-| `POST` | `/api/approve` | Hot-swap the live selector profile |
-| `POST` | `/api/rollback` | Reset to the baseline profile |
-
----
-
-## 🔐 Security Notes
-
-* All credentials load from `.env`, which is git-ignored; `.env.example` is the shareable template.
-* `/api/extract` and `/api/heal` validate every target URL: scheme allow-list plus DNS resolution checks that reject loopback, link-local, and RFC1918 addresses, closing the SSRF hole inherent to user-supplied crawl targets.
-* All UI-rendered values are HTML-escaped before injection into the dashboard.
-
----
-
-## 🏆 Key Hackathon Metrics & Business ROI
-
-* **Time to Resolution:** Selector fix lifecycles drop from ~45 minutes of manual debugging to a sub-second autonomous heal, measured live and shown in the dashboard metrics panel.
-* **Maintenance Overhead:** Removes the on-call loop for structural parser breakage.
-* **Zero-Downtime Patching:** `selectors.json` is re-read per extraction, so approved patches go live without a restart.
+**AI assistance.** GitHub Copilot was used during development for scaffolding and refactoring. All architecture decisions, the collector-per-publisher model, the drift-detection thresholds, and the heal-versus-provision routing were designed and verified by hand.

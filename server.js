@@ -18,6 +18,10 @@ const config = {
 };
 
 const ELEVENLABS_TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GEMINI_TIMEOUT_MS = 45000;
+const MAX_ARTICLE_CHARS = 12000;
+const MAX_SPOKEN_CHARS = 2000;
 
 const CLI_ENTRY = require.resolve('@brightdata/cli/dist/index.js');
 const CLI_TIMEOUT_MS = 900000;
@@ -179,7 +183,8 @@ function requireCollector() {
   if (!config.collectorId) {
     throw new HttpError(
       500,
-      'BRIGHTDATA_COLLECTOR_ID is not set. Create one with: bdata scraper create <url> "<description>"'
+      'No collector exists for this publisher and no BRIGHTDATA_COLLECTOR_ID fallback is set. ' +
+      'Extract a publisher first to have one built, or set the fallback in .env.'
     );
   }
   return config.collectorId;
@@ -199,6 +204,14 @@ function collectorFor(url) {
   return findCollector(new URL(url).hostname) || requireCollector();
 }
 
+// collectorFor() throws when nothing matches, which is the right behaviour mid-pipeline
+// but not when deciding whether a collector still has to be built.
+function canCollect(url) {
+  if (config.collectorId) return true;
+  if (!url) return false;
+  return Boolean(findCollector(new URL(url).hostname));
+}
+
 async function loadCollectors() {
   const response = await fetch(COLLECTOR_LIST_URL, {
     headers: { Authorization: `Bearer ${config.brightDataApiKey}` },
@@ -213,8 +226,8 @@ async function loadCollectors() {
   return found;
 }
 
-async function scraperRun(url) {
-  const output = await runCli(['scraper', 'run', collectorFor(url), url, '--sync', '--json']);
+async function scraperRun(url, collectorId) {
+  const output = await runCli(['scraper', 'run', collectorId || collectorFor(url), url, '--sync', '--json']);
   const parsed = parseCliJson(output);
   const record = Array.isArray(parsed) ? parsed[0] || {} : parsed;
   const body = record.article_body || '';
@@ -267,7 +280,7 @@ function isBroken(article) {
 }
 
 const REQUIRED_FIELDS = ['headline', 'article_body'];
-const OPTIONAL_FIELDS = ['author'];
+const OPTIONAL_FIELDS = ['author', 'publish_date'];
 
 // The CLI does not forward --url to the heal call, so the failing page has to be named in the prompt itself.
 function buildHealPrompt(url, article) {
@@ -300,7 +313,8 @@ const SUMMARY_PROMPT = [
   'If the text is not a news article, set headline to "NOT_AN_ARTICLE" and summary to an empty string.'
 ].join(' ');
 
-const SUMMARY_SCHEMA = {
+// Summaries and translations both return exactly this pair, so they share one schema.
+const HEADLINE_SUMMARY_SCHEMA = {
   type: 'object',
   properties: {
     headline: { type: 'string' },
@@ -309,52 +323,63 @@ const SUMMARY_SCHEMA = {
   required: ['headline', 'summary']
 };
 
-async function summarizeWithGemini(title, content) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`;
+// Every Gemini call is the same request shape with a different prompt, schema and
+// temperature, so the transport, error mapping and JSON extraction live here once.
+async function callGemini({ prompt, schema, temperature, maxOutputTokens, label }) {
+  if (!config.geminiApiKey) {
+    throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
+  }
+  const endpoint = `${GEMINI_API_URL}/${config.geminiModel}:generateContent`;
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
     body: JSON.stringify({
-      contents: [
-        { parts: [{ text: `${SUMMARY_PROMPT}\n\nSource headline: ${title}\n\nArticle:\n${content.slice(0, 12000)}` }] }
-      ],
+      contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 2048,
+        temperature,
+        maxOutputTokens: maxOutputTokens || 2048,
         thinkingConfig: { thinkingLevel: 'minimal' },
         responseMimeType: 'application/json',
-        responseSchema: SUMMARY_SCHEMA
+        responseSchema: schema
       }
     }),
-    signal: AbortSignal.timeout(45000)
+    signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS)
   });
 
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    const detail = payload && payload.error ? payload.error.message : `HTTP ${response.status}`;
-    throw new HttpError(response.status === 429 ? 429 : 502, `Gemini rejected the request: ${detail}`);
+    const detail = payload?.error?.message || `HTTP ${response.status}`;
+    throw new HttpError(response.status === 429 ? 429 : 502, `Gemini rejected the ${label}: ${detail}`);
   }
 
-  const candidate = payload && payload.candidates && payload.candidates[0];
-  if (candidate && candidate.finishReason === 'MAX_TOKENS') {
+  const candidate = payload?.candidates?.[0];
+  if (candidate?.finishReason === 'MAX_TOKENS') {
     throw new HttpError(502, 'Gemini hit the output token budget before finishing');
   }
-  const text = candidate && candidate.content && candidate.content.parts
-    ? candidate.content.parts
-        .filter((part) => !part.thought)
-        .map((part) => part.text || '')
-        .join('')
-        .replace(/^```(?:json)?\s*|\s*```$/g, '')
-        .trim()
-    : '';
-  if (!text) throw new HttpError(502, 'Gemini returned no usable candidate');
+  // Thought parts carry reasoning rather than answer text, and the model still
+  // occasionally wraps JSON in a code fence despite responseMimeType.
+  const text = (candidate?.content?.parts || [])
+    .filter((part) => !part.thought)
+    .map((part) => part.text || '')
+    .join('')
+    .replace(/^```(?:json)?\s*|\s*```$/g, '')
+    .trim();
+  if (!text) throw new HttpError(502, `Gemini returned no usable ${label}`);
 
-  let parsed;
   try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new HttpError(502, 'Gemini returned malformed JSON');
+    return JSON.parse(text);
+  } catch {
+    throw new HttpError(502, `Gemini returned malformed ${label} JSON`);
   }
+}
+
+async function summarizeWithGemini(title, content) {
+  const parsed = await callGemini({
+    prompt: `${SUMMARY_PROMPT}\n\nSource headline: ${title}\n\nArticle:\n${content.slice(0, MAX_ARTICLE_CHARS)}`,
+    schema: HEADLINE_SUMMARY_SCHEMA,
+    temperature: 0.2,
+    label: 'summary'
+  });
   if (parsed.headline === 'NOT_AN_ARTICLE') {
     throw new HttpError(422, 'Gemini judged this page not to be a news article');
   }
@@ -393,49 +418,13 @@ async function channelBriefWithGemini(stories) {
     .map((story, index) => `${index + 1}. Title: ${story.title || 'Untitled'}\nDescription: ${story.description || 'No description available.'}`)
     .join('\n\n');
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: `${CHANNEL_PROMPT}\n\n${listing}` }] }],
-      generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 3072,
-        thinkingConfig: { thinkingLevel: 'minimal' },
-        responseMimeType: 'application/json',
-        responseSchema: CHANNEL_SCHEMA
-      }
-    }),
-    signal: AbortSignal.timeout(45000)
+  const parsed = await callGemini({
+    prompt: `${CHANNEL_PROMPT}\n\n${listing}`,
+    schema: CHANNEL_SCHEMA,
+    temperature: 0.4,
+    maxOutputTokens: 3072,
+    label: 'channel brief'
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail = payload && payload.error ? payload.error.message : `HTTP ${response.status}`;
-    throw new HttpError(response.status === 429 ? 429 : 502, `Gemini rejected the request: ${detail}`);
-  }
-
-  const candidate = payload && payload.candidates && payload.candidates[0];
-  if (candidate && candidate.finishReason === 'MAX_TOKENS') {
-    throw new HttpError(502, 'Gemini hit the output token budget before finishing');
-  }
-  const text = candidate && candidate.content && candidate.content.parts
-    ? candidate.content.parts
-        .filter((part) => !part.thought)
-        .map((part) => part.text || '')
-        .join('')
-        .replace(/^```(?:json)?\s*|\s*```$/g, '')
-        .trim()
-    : '';
-  if (!text) throw new HttpError(502, 'Gemini returned no usable candidate');
-
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    throw new HttpError(502, 'Gemini returned malformed JSON');
-  }
   if (!Array.isArray(parsed.segments)) {
     throw new HttpError(502, 'Gemini did not return a segments array');
   }
@@ -448,63 +437,21 @@ const LANGUAGES = [
   'Chinese', 'Russian', 'Turkish', 'Indonesian', 'Vietnamese', 'Ukrainian'
 ];
 
-const TRANSLATE_SCHEMA = {
-  type: 'object',
-  properties: {
-    headline: { type: 'string' },
-    summary: { type: 'string' }
-  },
-  required: ['headline', 'summary']
-};
-
 async function translateWithGemini(headline, summary, language) {
-  const prompt = [
-    `Translate the news headline and summary below into ${language}.`,
-    'Preserve meaning, names and numbers exactly. Do not add or remove information.',
-    'Return only the translation, written naturally for a native reader.',
-    '',
-    `Headline: ${headline}`,
-    '',
-    `Summary: ${summary}`
-  ].join('\n');
-
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`;
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': config.geminiApiKey },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.1,
-        maxOutputTokens: 2048,
-        thinkingConfig: { thinkingLevel: 'minimal' },
-        responseMimeType: 'application/json',
-        responseSchema: TRANSLATE_SCHEMA
-      }
-    }),
-    signal: AbortSignal.timeout(45000)
+  return callGemini({
+    prompt: [
+      `Translate the news headline and summary below into ${language}.`,
+      'Preserve meaning, names and numbers exactly. Do not add or remove information.',
+      'Return only the translation, written naturally for a native reader.',
+      '',
+      `Headline: ${headline}`,
+      '',
+      `Summary: ${summary}`
+    ].join('\n'),
+    schema: HEADLINE_SUMMARY_SCHEMA,
+    temperature: 0.1,
+    label: 'translation'
   });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const detail = payload && payload.error ? payload.error.message : `HTTP ${response.status}`;
-    throw new HttpError(response.status === 429 ? 429 : 502, `Gemini rejected the translation: ${detail}`);
-  }
-  const candidate = payload && payload.candidates && payload.candidates[0];
-  const text = candidate && candidate.content && candidate.content.parts
-    ? candidate.content.parts
-        .filter((part) => !part.thought)
-        .map((part) => part.text || '')
-        .join('')
-        .replace(/^```(?:json)?\s*|\s*```$/g, '')
-        .trim()
-    : '';
-  if (!text) throw new HttpError(502, 'Gemini returned no translation');
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new HttpError(502, 'Gemini returned malformed translation JSON');
-  }
 }
 
 async function elevenLabsErrorDetail(response) {
@@ -612,17 +559,20 @@ function assertHttpUrl(candidate) {
   return parsed.toString();
 }
 
-async function extractArticle(url) {
+// collectorOverride deliberately runs a collector against a publisher it does not own,
+// which is how drift is demonstrated. Left unset, the publisher's own collector is used.
+async function extractArticle(url, collectorOverride) {
   const host = new URL(url).hostname;
   const started = Date.now();
-  log('info', `running collector ${collectorFor(url)} against ${host}`);
-  const article = await scraperRun(url);
+  const collectorId = collectorOverride || collectorFor(url);
+  log('info', `running collector ${collectorId} against ${host}`);
+  const article = await scraperRun(url, collectorId);
   state.metrics.extractions += 1;
 
   const broken = isBroken(article);
   const result = {
     url,
-    collectorId: collectorFor(url),
+    collectorId,
     status: broken ? 'COLLECTOR_DRIFT' : 'HEALTHY',
     article,
     healable: broken,
@@ -694,6 +644,11 @@ app.get('/api/news', async (request, response, next) => {
 app.post('/api/extract', async (request, response, next) => {
   try {
     const url = assertHttpUrl(request.body && request.body.url);
+    const provisioned = await ensureCollector(url, `${new URL(url).hostname} has no collector yet`);
+    if (provisioned) {
+      response.json({ ...provisioned.extraction, provisioned });
+      return;
+    }
     response.json(await extractArticle(url));
   } catch (error) {
     next(error);
@@ -719,10 +674,28 @@ app.post('/api/simulate', async (request, response, next) => {
       throw new HttpError(422, 'Every publisher in the current feed is already known to this collector');
     }
 
-    for (const candidate of candidates) {
+    // Drift only means something once a collector exists to drift away from, so a cold
+    // account spends its first candidate building one rather than failing.
+    const seed = candidates[0];
+    const provisioned = await ensureCollector(seed.link, 'no collector exists yet to demonstrate drift against');
+    const pool = provisioned ? candidates.slice(1) : candidates;
+    if (provisioned && !pool.length) {
+      response.json({ ...provisioned.extraction, provisioned, story: seed });
+      return;
+    }
+
+    // Reuse one collector across every candidate. These publishers have no collector of
+    // their own, and building one each would defeat the point: the failure being shown is
+    // a trained collector meeting markup it was never built for.
+    const probe = config.collectorId || state.collectors.values().next().value;
+    if (!probe) {
+      throw new HttpError(500, 'No collector is available to demonstrate drift with');
+    }
+
+    for (const candidate of pool) {
       const host = new URL(candidate.link).hostname;
-      log('warn', `pointing collector ${collectorFor(candidate.link)} at ${host}, a publisher it was never trained on`);
-      const result = await extractArticle(candidate.link);
+      log('warn', `pointing collector ${probe} at ${host}, a publisher it was never trained on`);
+      const result = await extractArticle(candidate.link, probe);
       if (result.status === 'COLLECTOR_DRIFT') {
         response.json({ ...result, story: candidate });
         return;
@@ -780,6 +753,14 @@ async function provisionCollector(url, started, reason) {
   return patch;
 }
 
+// Every entry point funnels through here so a cold account bootstraps itself on first
+// use instead of demanding a collector be created out of band. Returns the provisioning
+// patch when one was built, or null when an existing collector already covers the URL.
+async function ensureCollector(url, reason) {
+  if (canCollect(url)) return null;
+  return provisionCollector(url, Date.now(), reason);
+}
+
 app.post('/api/heal', async (request, response, next) => {
   try {
     const url = assertHttpUrl(
@@ -819,33 +800,28 @@ app.post('/api/heal', async (request, response, next) => {
       url,
       durationMs
     };
-    state.pendingHeal = patch;
 
-    log('success', `heal ${envelope.status} in ${Math.round(durationMs / 1000)}s across ${patch.steps.length} steps`);
+    // A staged patch that is never committed leaves the collector unrepaired, so the
+    // approval is part of healing rather than a second decision for the operator.
+    try {
+      const approved = await scraperApprove(url);
+      state.metrics.patchesApplied += 1;
+      state.pendingHeal = null;
+      patch.approved = true;
+      patch.status = approved.status || patch.status;
+      log('success', `Bright Data saved the healed template, status ${approved.status}`);
+      broadcast('patch-applied', { status: approved.status, collectorId: approved.collector_id });
+    } catch (error) {
+      state.pendingHeal = null;
+      patch.approved = false;
+      patch.approvalError = error.message;
+      log('warn', `heal completed but could not be committed: ${error.message}`);
+    }
+
+    log('success', `heal ${patch.status} in ${Math.round(durationMs / 1000)}s across ${patch.steps.length} steps`);
     broadcast('patch-ready', patch);
     response.json(patch);
   } catch (error) {
-    next(error);
-  }
-});
-
-app.post('/api/approve', async (request, response, next) => {
-  try {
-    if (!state.pendingHeal) {
-      throw new HttpError(409, 'There is no heal awaiting approval');
-    }
-    const started = Date.now();
-    const envelope = await scraperApprove(state.pendingHeal.url);
-    state.metrics.patchesApplied += 1;
-    state.pendingHeal = null;
-    log('success', `Bright Data saved the healed template in ${Date.now() - started}ms, status ${envelope.status}`);
-    broadcast('patch-applied', { status: envelope.status, collectorId: envelope.collector_id });
-    response.json({ status: envelope.status, collectorId: envelope.collector_id });
-  } catch (error) {
-    if (error.code === 'HEAL_NOT_APPROVABLE') {
-      state.pendingHeal = null;
-      log('warn', 'dropped the staged heal, Bright Data will not commit it');
-    }
     next(error);
   }
 });
@@ -855,9 +831,6 @@ app.post('/api/summarize', async (request, response, next) => {
     const last = state.lastExtraction;
     if (!last || !last.article.content) {
       throw new HttpError(409, 'Run a healthy extraction first, there is nothing to summarize');
-    }
-    if (!config.geminiApiKey) {
-      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
     }
     const started = Date.now();
     log('info', `sending ${last.article.stats.words} words to ${config.geminiModel}`);
@@ -885,9 +858,6 @@ app.post('/api/summarize', async (request, response, next) => {
 
 app.post('/api/channel', async (request, response, next) => {
   try {
-    if (!config.geminiApiKey) {
-      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
-    }
     const stories = Array.isArray(request.body && request.body.stories) ? request.body.stories.slice(0, 10) : [];
     if (!stories.length) {
       throw new HttpError(409, 'No stories were sent. Load stories first, then open the channel.');
@@ -928,9 +898,6 @@ app.post('/api/translate', async (request, response, next) => {
     if (!state.lastSummary) {
       throw new HttpError(409, 'Generate a summary first, there is nothing to translate');
     }
-    if (!config.geminiApiKey) {
-      throw new HttpError(500, 'GEMINI_API_KEY is not configured in .env');
-    }
     const language = LANGUAGES.find(
       (item) => item.toLowerCase() === String(request.body && request.body.language).toLowerCase()
     );
@@ -956,6 +923,12 @@ app.get('/api/languages', (request, response) => {
   response.json({ languages: LANGUAGES });
 });
 
+function sendAudio(response, spoken) {
+  response.setHeader('Content-Type', spoken.contentType);
+  response.setHeader('Cache-Control', 'no-store');
+  response.send(spoken.audio);
+}
+
 app.post('/api/speak', async (request, response, next) => {
   try {
     const summary = state.lastSummary;
@@ -966,9 +939,7 @@ app.post('/api/speak', async (request, response, next) => {
     log('info', `voicing the summary with ElevenLabs voice ${config.elevenLabsVoiceId} on ${config.elevenLabsModel}`);
     const spoken = await speakWithElevenLabs(`${summary.headline}. ${summary.summary}`);
     log('success', `${(spoken.audio.length / 1024).toFixed(1)}KB of audio rendered in ${Date.now() - started}ms`);
-    response.setHeader('Content-Type', spoken.contentType);
-    response.setHeader('Cache-Control', 'no-store');
-    response.send(spoken.audio);
+    sendAudio(response, spoken);
   } catch (error) {
     next(error);
   }
@@ -981,11 +952,9 @@ app.post('/api/channel-speak', async (request, response, next) => {
       throw new HttpError(400, 'No text was sent to voice');
     }
     const started = Date.now();
-    const spoken = await speakWithElevenLabs(text.slice(0, 2000));
+    const spoken = await speakWithElevenLabs(text.slice(0, MAX_SPOKEN_CHARS));
     log('info', `voiced a channel segment with ElevenLabs in ${Date.now() - started}ms`);
-    response.setHeader('Content-Type', spoken.contentType);
-    response.setHeader('Cache-Control', 'no-store');
-    response.send(spoken.audio);
+    sendAudio(response, spoken);
   } catch (error) {
     next(error);
   }
@@ -1011,7 +980,7 @@ loadCollectors()
       process.stdout.write(`Autonomous news pipeline listening on http://localhost:${config.port}\n`);
       process.stdout.write(`${state.collectors.size} publisher collectors recovered from Bright Data\n`);
       if (!config.collectorId) {
-        process.stdout.write('Warning: BRIGHTDATA_COLLECTOR_ID missing, extraction and healing will fail\n');
+        process.stdout.write('No BRIGHTDATA_COLLECTOR_ID fallback set, publishers without a collector will have one built on first use\n');
       }
     });
   });

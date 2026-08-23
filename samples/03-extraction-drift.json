@@ -1,0 +1,26 @@
+{
+  "url": "https://sports.yahoo.com/articles/cole-kozlowski-return-ucf-murky-220600027.html",
+  "collectorId": "c_mt44mqsj2mg089hots",
+  "status": "COLLECTOR_DRIFT",
+  "article": {
+    "headline": null,
+    "author": null,
+    "published": null,
+    "content": null,
+    "stats": {
+      "characters": 0,
+      "words": 0
+    }
+  },
+  "healable": true,
+  "durationMs": 6667,
+  "story": {
+    "id": "22030016a46e022bb02dcc277e66a6b9",
+    "title": "Cole Kozlowski’s return to UCF murky with latest court decision",
+    "description": "Cole Kozlowski’s return to the UCF football roster took an unexpected turn when a U.S. Court of Appeals issued a stay of an injunction that had previously granted the middle linebacker and other athletes from the Class of 2022 an extra year of eligibility. The ruling, announced Friday, temporarily halts a decision by a U.S. District Court judge three weeks earlier in the Wisne v. NCAA case. An ...",
+    "link": "https://sports.yahoo.com/articles/cole-kozlowski-return-ucf-murky-220600027.html",
+    "source": "Yahoo! News",
+    "publishedAt": "2026-08-21 22:06:00",
+    "category": "breaking"
+  }
+}

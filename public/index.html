@@ -289,6 +289,20 @@
     border: 1px solid var(--line); border-radius: 12px;
     background: radial-gradient(120% 95% at 50% 112%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 68%), var(--elev);
   }
+  /* The panel grows with the card, so the ring width and spark travel have to be
+     measured from its own box rather than fixed distances, or the column stops short
+     of the borders. */
+  @supports (height: 1cqh) {
+    .heal-portal {
+      container-type: size;
+      --rx: clamp(120px, 32cqw, 320px);
+      --ry: calc(var(--rx) * .19);
+      /* The ring hangs half its own height below --base, so the baseline has to clear
+         --ry or the widened ellipse spills past the bottom border. */
+      --base: calc(var(--ry) + 20px);
+      --lift: calc(100cqh - var(--base));
+    }
+  }
   #patchCard.healing .diff, #patchCard.healing #patchCode { display: none; }
   .heal-portal .note {
     position: absolute; top: 15px; left: 0; right: 0; text-align: center;
@@ -322,7 +336,7 @@
     opacity: .9;
   }
   .heal-portal .floor {
-    bottom: calc(var(--base) - var(--ry) * 1.6);
+    bottom: max(0px, calc(var(--base) - var(--ry) * 1.6));
     height: calc(var(--ry) * 3.2);
     background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 45%, transparent), transparent 70%);
     filter: blur(14px);
@@ -344,7 +358,13 @@
     filter: blur(6px);
     animation: beam-breathe 4.2s ease-in-out infinite;
   }
-  .heal-portal .field { position: absolute; inset: 0; overflow: hidden; }
+  /* Fade the column out under the caption so sparks reaching the top border do not
+     collide with it. */
+  .heal-portal .field {
+    position: absolute; inset: 0; overflow: hidden;
+    -webkit-mask-image: linear-gradient(to top, #000 72%, rgba(0,0,0,.55) 90%, transparent 100%);
+    mask-image: linear-gradient(to top, #000 72%, rgba(0,0,0,.55) 90%, transparent 100%);
+  }
   .heal-portal .spark, .heal-portal .streak {
     position: absolute;
     left: calc(50% + var(--rx) * var(--cos));
@@ -372,7 +392,7 @@
   @keyframes rise {
     0%   { transform: translate(-50%, 0) scale(.45); opacity: 0; }
     14%  { opacity: 1; }
-    72%  { opacity: .8; }
+    82%  { opacity: .72; }
     100% { transform: translate(calc(-50% + var(--drift)), calc(var(--lift) * var(--reach) * -1)) scale(1); opacity: 0; }
   }
   @keyframes ring-pulse {
@@ -624,7 +644,6 @@
           <button class="warn" id="driftBtn">Simulate</button>
           <button class="blue" id="summarizeBtn" disabled>Summarize</button>
           <button class="blue" id="healBtn" disabled>Heal</button>
-          <button class="primary" id="approveBtn" disabled>Approve</button>
         </div>
       </div>
       <div class="card-body">
@@ -644,7 +663,7 @@
         </div>
       </div>
       <div class="card-body">
-        <div class="heal-portal hidden" id="healPortal" data-sparks="72">
+        <div class="heal-portal hidden" id="healPortal" data-sparks="150">
           <div class="field"></div>
           <div class="floor"></div>
           <div class="beam"></div>
@@ -873,7 +892,6 @@ function renderPills(status) {
   el('mDrift').textContent = status.metrics.driftIncidents;
   el('mHeals').textContent = status.metrics.healsCompleted;
   el('mTime').textContent = status.metrics.lastHealMs ? (status.metrics.lastHealMs / 1000).toFixed(1) + 's' : '-';
-  el('approveBtn').disabled = !status.pendingHeal;
   if (status.pendingHeal) {
     renderPatch(status.pendingHeal);
   } else {
@@ -957,7 +975,7 @@ function renderPatch(patch) {
         : 'regression check passed: collector still parses its original training page') + '</div>'
     : '<div class="minus">- ' + (created
         ? 'new collector still returned no headline, review it in Bright Data'
-        : 'regression check: original training page returned no headline, review before approving') + '</div>';
+        : 'regression check: original training page returned no headline, review it in Bright Data') + '</div>';
   el('diff').innerHTML =
     '<div class="minus">- collector returned null on ' + escapeHtml(new URL(patch.url).hostname) + '</div>' +
     '<div class="plus">+ ' + escapeHtml(patch.diffSummary) + '</div>' +
@@ -966,14 +984,12 @@ function renderPatch(patch) {
     (created ? 'spec sent to Scraper Studio:\n' : 'prompt sent to Scraper Studio:\n') + patch.prompt +
     '\n\npipeline steps:\n  ' + patch.steps.join('\n  ') +
     '\n\nnext step:\n' + patch.nextStep;
-  el('approveBtn').disabled = created;
 }
 
 function clearPatch() {
   el('patchMeta').textContent = 'idle';
   el('diff').innerHTML = '';
   el('patchCode').textContent = 'No heal staged.';
-  el('approveBtn').disabled = true;
 }
 
 function seedHealPortal() {
@@ -995,8 +1011,8 @@ function seedHealPortal() {
                                             : (5 + Math.random() * 9).toFixed(1) + 'px');
     node.style.setProperty('--dur', (2.6 + Math.random() * 3.6).toFixed(2) + 's');
     node.style.setProperty('--delay', (-Math.random() * 6).toFixed(2) + 's');
-    node.style.setProperty('--drift', (Math.random() * 18 - 9).toFixed(1) + 'px');
-    node.style.setProperty('--reach', (0.68 + Math.random() * 0.32).toFixed(2));
+    node.style.setProperty('--drift', (Math.random() * 30 - 15).toFixed(1) + 'px');
+    node.style.setProperty('--reach', (0.82 + Math.random() * 0.26).toFixed(2));
     fragment.appendChild(node);
   }
   field.appendChild(fragment);
@@ -1139,32 +1155,18 @@ el('healBtn').onclick = async () => {
     });
     renderPatch(patch);
     if (patch.extraction) renderExtraction(patch.extraction);
-  } catch (error) {
-    print('error', error.message);
-    el('patchMeta').textContent = 'idle';
-  } finally {
-    setHealing(false);
-    button.textContent = 'Heal';
-    refreshStatus();
-  }
-};
-
-el('approveBtn').onclick = async () => {
-  const button = el('approveBtn');
-  button.disabled = true;
-  button.textContent = 'Approving...';
-  try {
-    await api('/api/approve', { method: 'POST' });
-    clearPatch();
-    if (selected) {
+    // The heal is committed server-side, so prove it by re-running the collector.
+    if (!patch.extraction && patch.approved && selected) {
       button.textContent = 'Verifying...';
       const card = document.querySelector('.story.active');
       await runExtraction(selected, card, card ? card.querySelector('button') : null);
     }
   } catch (error) {
     print('error', error.message);
+    el('patchMeta').textContent = 'idle';
   } finally {
-    button.textContent = 'Approve';
+    setHealing(false);
+    button.textContent = 'Heal';
     refreshStatus();
   }
 };
@@ -1305,6 +1307,7 @@ let channelIndex = 0;
 let channelTimer = null;
 let channelPlaying = true;
 let channelTypeTimer = null;
+let channelTypeState = { text: '', i: 0 };
 let channelMuted = false;
 let channelAudio = null;
 let channelAudioToken = 0;
@@ -1327,20 +1330,36 @@ function setChannelView(view) {
 function typeSummary(text) {
   const node = el('channelSummary');
   clearInterval(channelTypeTimer);
+  channelTypeTimer = null;
   node.textContent = '';
+  channelTypeState = { text: text || '', i: 0 };
+  if (channelMuted) setAnchorTalking(true);
+  if (channelPlaying) resumeTyping();
+}
+
+// Typing runs off stored progress rather than a closure counter so pausing can freeze
+// it mid-sentence and resume from the same character.
+function resumeTyping() {
+  clearInterval(channelTypeTimer);
+  const node = el('channelSummary');
+  if (channelTypeState.i >= channelTypeState.text.length) return;
   const cursor = document.createElement('span');
   cursor.className = 'cursor';
-  let i = 0;
-  if (channelMuted) setAnchorTalking(true);
   channelTypeTimer = setInterval(() => {
-    i += 3;
-    node.textContent = text.slice(0, i);
+    channelTypeState.i += 3;
+    node.textContent = channelTypeState.text.slice(0, channelTypeState.i);
     node.appendChild(cursor);
-    if (i >= text.length) {
+    if (channelTypeState.i >= channelTypeState.text.length) {
       clearInterval(channelTypeTimer);
+      channelTypeTimer = null;
       if (channelMuted) setAnchorTalking(false);
     }
   }, 18);
+}
+
+function pauseTyping() {
+  clearInterval(channelTypeTimer);
+  channelTypeTimer = null;
 }
 
 function setAnchorTalking(active) {
@@ -1389,6 +1408,7 @@ function stopChannelAudio() {
   channelAudioToken += 1;
   if (channelAudio) {
     channelAudio.pause();
+    if (channelAudio.dataset.objectUrl) URL.revokeObjectURL(channelAudio.dataset.objectUrl);
     channelAudio.src = '';
     channelAudio = null;
   }
@@ -1413,12 +1433,43 @@ function speakWithBrowserVoice(text, token) {
 }
 
 async function speakSegment(segment) {
-  if (channelMuted || !segment) return;
+  if (channelMuted || !segment || !channelPlaying) return;
   const token = ++channelAudioToken;
   // Only the headline is read aloud - it's short enough to finish before the next story
   // comes on, so narration never gets cut off mid-sentence. The full summary still
   // appears on screen via the typewriter effect, just isn't spoken.
-  speakWithBrowserVoice(segment.headline, token);
+  const text = segment.headline;
+  try {
+    const response = await fetch('/api/channel-speak', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text })
+    });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail && detail.error ? detail.error : 'HTTP ' + response.status);
+    }
+    const blob = await response.blob();
+    // The story may have moved on, or the channel closed, while the audio was rendering.
+    if (token !== channelAudioToken) return;
+
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.dataset.objectUrl = url;
+    channelAudio = audio;
+    audio.onplay = () => { if (token === channelAudioToken) setAnchorTalking(true); };
+    audio.onended = () => {
+      if (token !== channelAudioToken) return;
+      setAnchorTalking(false);
+      stopMouthAnimation();
+    };
+    animateMouthFromAudio(audio);
+    await audio.play();
+  } catch (error) {
+    if (token !== channelAudioToken) return;
+    print('warn', 'ElevenLabs narration unavailable, using the browser voice (' + error.message + ')');
+    speakWithBrowserVoice(text, token);
+  }
 }
 
 function renderChannelDots() {
@@ -1462,12 +1513,26 @@ function stepChannel(direction) {
   if (!channelSegments.length) return;
   channelIndex = (channelIndex + direction + channelSegments.length) % channelSegments.length;
   renderChannelSegment();
+  // The timer is a one-shot timeout, so it has to be re-armed or the channel stops
+  // advancing after the first automatic change.
+  if (channelPlaying) startChannelTimer();
 }
 
 function setChannelPlaying(playing) {
   channelPlaying = playing;
   el('channelPlayBtn').textContent = playing ? 'Pause' : 'Play';
-  if (playing) startChannelTimer(); else stopChannelTimer();
+  if (playing) {
+    resumeTyping();
+    if (channelAudio) channelAudio.play().catch(() => {});
+    if ('speechSynthesis' in window) window.speechSynthesis.resume();
+    startChannelTimer();
+  } else {
+    stopChannelTimer();
+    pauseTyping();
+    if (channelAudio) channelAudio.pause();
+    if ('speechSynthesis' in window) window.speechSynthesis.pause();
+    setAnchorTalking(false);
+  }
 }
 
 function buildTicker() {
@@ -1563,8 +1628,8 @@ function toggleChannelMute() {
 el('channelBtn').onclick = openChannel;
 el('channelCloseBtn').onclick = closeChannel;
 el('channelRetryBtn').onclick = openChannel;
-el('channelPrevBtn').onclick = () => { stepChannel(-1); if (channelPlaying) startChannelTimer(); };
-el('channelNextBtn').onclick = () => { stepChannel(1); if (channelPlaying) startChannelTimer(); };
+el('channelPrevBtn').onclick = () => stepChannel(-1);
+el('channelNextBtn').onclick = () => stepChannel(1);
 el('channelPlayBtn').onclick = () => setChannelPlaying(!channelPlaying);
 el('channelMuteBtn').onclick = toggleChannelMute;
 el('channelOverlay').addEventListener('click', (event) => {

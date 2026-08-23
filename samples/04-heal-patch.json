@@ -1,0 +1,28 @@
+{
+  "collectorId": "c_mt47g7832h7g3f8ktk",
+  "status": "done",
+  "prompt": "On https://abbynews.com/2026/08/21/iio-investigating-williams-lake-incident-that-left-woman-seriously-injured/ this scraper returns headline and article_body as null.\nUpdate the extraction so those fields are captured on abbynews.com article pages, and leave fields that already work on other pages unchanged.\nThe heal is done when headline and article_body are non-empty for the URL above; author, publish_date may stay null.",
+  "steps": [
+    "planner",
+    "control_preview_runner",
+    "code_fixer",
+    "step_preview_runner",
+    "request_fulfillment_validator",
+    "css_selector_extractor",
+    "code_fixer",
+    "step_preview_runner",
+    "request_fulfillment_validator",
+    "step_advance"
+  ],
+  "nextStep": "bdata scraper approve c_mt47g7832h7g3f8ktk --url https://abbynews.com/2026/08/21/iio-investigating-williams-lake-incident-that-left-woman-seriously-injured/",
+  "diffSummary": "proposed template has 1 step(s) — review at view_url",
+  "viewUrl": "https://brightdata.com/cp/scrapers/c_mt47g7832h7g3f8ktk",
+  "preview": {
+    "headline": "IIO investigating Williams Lake incident that left woman seriously injured",
+    "author": "By Laísa Condé/Williams Lake Tribune",
+    "characters": 100
+  },
+  "url": "https://abbynews.com/2026/08/21/iio-investigating-williams-lake-incident-that-left-woman-seriously-injured/",
+  "durationMs": 235667,
+  "approved": true
+}
